@@ -2218,5 +2218,3 @@ server.listen(PORT, '0.0.0.0', async () => {
         console.log('⚠️ No DISCORD_TOKEN in .env!');
     }
 });
-
-hi
