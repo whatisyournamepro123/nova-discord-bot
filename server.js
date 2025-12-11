@@ -126,6 +126,20 @@ JSON only: {"question":"text","answer":"correct","options":["a","b","c","d"],"hi
         }
     }
 
+    async moderateContent(content) {
+        if (!content) return { flagged: false };
+        const response = await this.ask(
+            `Analyze this message for moderation. Message: "${content}". Rules: No hate speech, severe toxicity, explicit content, threats, spam. JSON ONLY: {"flagged":boolean, "reason":"short reason", "severity":"low/medium/high"}`,
+            'You are a strict Discord moderator. Output JSON only.',
+            150, 0
+        );
+        try {
+            return JSON.parse(response.replace(/```json?|```/g, '').trim());
+        } catch (e) {
+            return { flagged: false };
+        }
+    }
+
     async chat(message, username) {
         return await this.ask(`${username}: ${message}`, 'You are Nova bot. Friendly, helpful, use emojis. Under 250 chars.') || 'Hey! 👋';
     }
@@ -282,6 +296,40 @@ class NovaBot {
         this.client.on('messageCreate', async (msg) => {
             if (msg.author.bot || !msg.guild) return;
             this.stats.messagesHandled++;
+
+            // ═══════════════════════════════════════════════════════════════
+            // AI MODERATION
+            // ═══════════════════════════════════════════════════════════════
+            if (!msg.member.permissions.has(PermissionFlagsBits.Administrator)) {
+                const mod = await this.ai.moderateContent(msg.content);
+                if (mod.flagged) {
+                    try {
+                        await msg.delete();
+                        const warning = await msg.channel.send({ 
+                            embeds: [new EmbedBuilder()
+                                .setColor('#ff0000')
+                                .setDescription(`⚠️ **Message Removed**\nReason: ${mod.reason}\nAuthor: ${msg.author}`)
+                            ]
+                        });
+                        setTimeout(() => warning.delete().catch(() => {}), 5000);
+
+                        this.log(`Moderated ${msg.author.tag}: ${mod.reason} (${mod.severity})`, 'warning');
+                        this.addServerEvent('Auto-Moderation', `${msg.author.tag} flagged: ${mod.reason}`, 'moderation');
+
+                        if (mod.severity === 'high') {
+                            try {
+                                await msg.member.timeout(10 * 60 * 1000, 'Auto-Mod: High severity violation');
+                                this.log(`Timed out ${msg.author.tag} for 10m`, 'moderation');
+                            } catch (e) {
+                                console.log('Failed to timeout user:', e.message);
+                            }
+                        }
+                        return;
+                    } catch (e) {
+                        console.error('Moderation failed:', e);
+                    }
+                }
+            }
 
             // Ticket channel messages - sync to dashboard
             if (this.ticketChannels.has(msg.channel.id)) {
