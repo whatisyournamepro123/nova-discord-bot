@@ -305,13 +305,23 @@ class NovaBot {
                 if (mod.flagged) {
                     try {
                         await msg.delete();
-                        const warning = await msg.channel.send({ 
-                            embeds: [new EmbedBuilder()
-                                .setColor('#ff0000')
-                                .setDescription(`⚠️ **Message Removed**\nReason: ${mod.reason}\nAuthor: ${msg.author}`)
+                        const embed = this.buildModEmbed({
+                            title: '🚨 Auto-Moderation Triggered',
+                            description: 'A message was removed to keep the chat clean.',
+                            color: '#ff4d4f',
+                            target: msg.author,
+                            moderator: this.client.user,
+                            reason: mod.reason || 'Policy violation',
+                            severity: mod.severity || 'medium',
+                            fields: [
+                                { name: '📄 Snippet', value: `\`\`\`\n${msg.content.slice(0, 180) || 'Empty message'}\n\`\`\`` },
+                                { name: '🚦 Severity', value: (mod.severity || 'medium').toUpperCase(), inline: true }
                             ]
                         });
-                        setTimeout(() => warning.delete().catch(() => {}), 5000);
+
+                        const warning = await msg.channel.send({ embeds: [embed] });
+                        setTimeout(() => warning.delete().catch(() => {}), 12000);
+                        await this.sendModLog(msg.guild, embed);
 
                         this.log(`Moderated ${msg.author.tag}: ${mod.reason} (${mod.severity})`, 'warning');
                         this.addServerEvent('Auto-Moderation', `${msg.author.tag} flagged: ${mod.reason}`, 'moderation');
@@ -355,27 +365,52 @@ class NovaBot {
                 return;
             }
 
-            const content = msg.content.toLowerCase();
             const isAdmin = msg.member.permissions.has(PermissionFlagsBits.Administrator);
+            const parts = msg.content.trim().split(/\s+/);
+            const command = parts.shift()?.toLowerCase();
+            const args = parts;
+
+            // Moderation commands (admins only)
+            if (isAdmin) {
+                if (command === '!warn') return await this.handleWarn(msg, args);
+                if (command === '!timeout') return await this.handleTimeout(msg, args);
+                if (command === '!kick') return await this.handleKick(msg, args);
+                if (command === '!ban') return await this.handleBan(msg, args);
+                if (command === '!purge') return await this.handlePurge(msg, args);
+                if (command === '!setlog') {
+                    const channel = msg.mentions.channels.first();
+                    if (channel) {
+                        this.getSettings(msg.guild.id).logChannelId = channel.id;
+                        return msg.reply({ embeds: [this.buildModEmbed({
+                            title: '🛰️ Log Channel Linked',
+                            description: `Moderation logs will be sent to ${channel}`,
+                            color: '#8b5cf6',
+                            moderator: msg.author
+                        })] });
+                    }
+                }
+            }
+
+            const content = (command || '').toLowerCase();
 
             if (content === '!help') await this.sendHelpEmbed(msg);
-            else if (content.startsWith('!ticket')) await this.createTicket(msg, msg.content.slice(7).trim() || 'No reason provided');
+            else if (content === '!ticket' || msg.content.toLowerCase().startsWith('!ticket')) await this.createTicket(msg, msg.content.slice(7).trim() || 'No reason provided');
             else if (content === '!setup' && isAdmin) await this.sendSetupEmbed(msg);
-            else if (content.startsWith('!setverify') && isAdmin) {
+            else if ((command === '!setverify') && isAdmin) {
                 const channel = msg.mentions.channels.first();
                 if (channel) {
                     this.getSettings(msg.guild.id).channelId = channel.id;
                     msg.reply({ embeds: [new EmbedBuilder().setColor('#ffffff').setDescription(`✅ Verification channel: ${channel}`)] });
                 }
             }
-            else if (content.startsWith('!setrole') && isAdmin) {
+            else if ((command === '!setrole') && isAdmin) {
                 const role = msg.mentions.roles.first();
                 if (role) {
                     this.getSettings(msg.guild.id).verifiedRoleId = role.id;
                     msg.reply({ embeds: [new EmbedBuilder().setColor('#ffffff').setDescription(`✅ Verified role: ${role}`)] });
                 }
             }
-            else if (content.startsWith('!setunverified') && isAdmin) {
+            else if ((command === '!setunverified') && isAdmin) {
                 const role = msg.mentions.roles.first();
                 if (role) {
                     this.getSettings(msg.guild.id).unverifiedRoleId = role.id;
@@ -741,35 +776,216 @@ class NovaBot {
 
     async sendHelpEmbed(msg) {
         const embed = new EmbedBuilder()
-            .setColor('#ffffff')
+            .setColor('#8b5cf6')
             .setAuthor({ name: '🤖 Nova Bot', iconURL: this.client.user.displayAvatarURL() })
-            .setTitle('Commands')
+            .setTitle('Command Palette')
+            .setDescription('Sleek moderation + support commands, all in one place.')
             .addFields(
-                { name: '🎫 Tickets', value: '`!ticket [reason]`', inline: true },
-                { name: '⚙️ Setup', value: '`!setup`', inline: true },
-                { name: '🧪 Test', value: '`!testvf`', inline: true }
+                { name: '🎫 Tickets', value: '`!ticket [reason]` • Open a support thread', inline: false },
+                { name: '🛡️ Verification', value: '`!testvf` • Send yourself a test verify prompt', inline: false },
+                { name: '⚙️ Setup', value: '`!setup` • Show current config\n`!setverify #channel`\n`!setrole @role`\n`!setunverified @role`\n`!setlog #channel`', inline: false },
+                { name: '🔨 Moderation', value: '`!warn @user [reason]`\n`!timeout @user <minutes> [reason]`\n`!kick @user [reason]`\n`!ban @user [reason]`\n`!purge <1-100>`', inline: false }
             )
-            .setFooter({ text: 'Mention me to chat!' });
+            .setFooter({ text: 'Mention me to chat or ask for help!' })
+            .setTimestamp();
         await msg.reply({ embeds: [embed] });
     }
 
     async sendSetupEmbed(msg) {
         const settings = this.getSettings(msg.guild.id);
         const embed = new EmbedBuilder()
-            .setColor('#ffffff')
-            .setTitle('⚙️ Setup')
+            .setColor('#8b5cf6')
+            .setTitle('⚙️ Setup Overview')
             .addFields(
-                { name: 'Commands', value: '`!setverify #channel`\n`!setrole @role`\n`!setunverified @role`', inline: false },
                 { name: 'Verify Channel', value: settings.channelId ? `<#${settings.channelId}>` : '❌ Not set', inline: true },
                 { name: 'Verified Role', value: settings.verifiedRoleId ? `<@&${settings.verifiedRoleId}>` : '❌ Not set', inline: true },
-                { name: 'Unverified Role', value: settings.unverifiedRoleId ? `<@&${settings.unverifiedRoleId}>` : '❌ Not set', inline: true }
-            );
+                { name: 'Unverified Role', value: settings.unverifiedRoleId ? `<@&${settings.unverifiedRoleId}>` : '❌ Not set', inline: true },
+                { name: 'Mod Log Channel', value: settings.logChannelId ? `<#${settings.logChannelId}>` : '❌ Not set', inline: true },
+                { name: 'Quick Commands', value: '`!setverify #channel`\n`!setrole @role`\n`!setunverified @role`\n`!setlog #channel`', inline: false }
+            )
+            .setFooter({ text: 'Keep things tidy with clear logging.' })
+            .setTimestamp();
         await msg.reply({ embeds: [embed] });
     }
 
     // ═══════════════════════════════════════════════════════════════════════
     // UTILITY
     // ═══════════════════════════════════════════════════════════════════════
+
+    buildModEmbed({ title, description, color = '#5865F2', target, moderator, reason, severity, fields = [] }) {
+        const accent = {
+            warn: '#facc15',
+            timeout: '#38bdf8',
+            kick: '#fb7185',
+            ban: '#ef4444',
+            purge: '#14b8a6'
+        };
+
+        const embed = new EmbedBuilder()
+            .setColor(color || accent.warn)
+            .setAuthor({ name: title || 'Moderation Action', iconURL: this.client.user.displayAvatarURL() })
+            .setDescription(description || 'Action performed.')
+            .setTimestamp();
+
+        if (target) embed.addFields({ name: '👤 Target', value: `${target.tag || target}` });
+        if (moderator) embed.addFields({ name: '🛠️ Moderator', value: `${moderator.tag || moderator}` });
+        if (reason) embed.addFields({ name: '📄 Reason', value: reason.substring(0, 1024) });
+        if (severity) embed.addFields({ name: '🚦 Severity', value: severity.toUpperCase(), inline: true });
+        if (fields.length) embed.addFields(fields);
+
+        embed.setFooter({ text: 'Nova Moderation • Logged', iconURL: this.client.user.displayAvatarURL() });
+        return embed;
+    }
+
+    async sendModLog(guild, embed) {
+        const settings = this.getSettings(guild.id);
+        if (!settings.logChannelId) return;
+
+        const channel = guild.channels.cache.get(settings.logChannelId) || await guild.channels.fetch(settings.logChannelId).catch(() => null);
+        if (channel) {
+            await channel.send({ embeds: [embed] }).catch(() => {});
+        }
+    }
+
+    async resolveMember(msg, input) {
+        if (!input) return null;
+        const mention = msg.mentions.members.first();
+        if (mention) return mention;
+        try {
+            return await msg.guild.members.fetch(input);
+        } catch (e) {
+            return null;
+        }
+    }
+
+    parseDurationMinutes(str) {
+        const minutes = parseInt(str, 10);
+        return isNaN(minutes) ? null : Math.min(Math.max(minutes, 1), 10080); // cap at 7 days
+    }
+
+    async handleWarn(msg, args) {
+        const member = await this.resolveMember(msg, args[0]);
+        if (!member) return msg.reply({ content: '❌ Mention a user to warn.' });
+
+        const reason = args.slice(1).join(' ') || 'No reason provided';
+        const embed = this.buildModEmbed({
+            title: '⚠️ Warning Issued',
+            description: `${member} has been warned.`,
+            color: '#facc15',
+            target: member.user,
+            moderator: msg.author,
+            reason
+        });
+
+        await msg.channel.send({ embeds: [embed] });
+        await this.sendModLog(msg.guild, embed);
+
+        this.addServerEvent('Warning', `${member.user.tag} warned by ${msg.author.tag}`, 'moderation');
+        this.log(`Warned ${member.user.tag}: ${reason}`, 'moderation');
+    }
+
+    async handleTimeout(msg, args) {
+        const member = await this.resolveMember(msg, args[0]);
+        if (!member) return msg.reply({ content: '❌ Mention a user to timeout.' });
+
+        const duration = this.parseDurationMinutes(args[1]) || 10;
+        const reason = args.slice(2).join(' ') || 'No reason provided';
+
+        try {
+            await member.timeout(duration * 60 * 1000, reason);
+        } catch (e) {
+            return msg.reply({ content: `❌ Unable to timeout: ${e.message}` });
+        }
+
+        const embed = this.buildModEmbed({
+            title: '⏳ Timeout Applied',
+            description: `${member} has been muted for **${duration}m**.`,
+            color: '#38bdf8',
+            target: member.user,
+            moderator: msg.author,
+            reason
+        });
+
+        await msg.channel.send({ embeds: [embed] });
+        await this.sendModLog(msg.guild, embed);
+        this.addServerEvent('Timeout', `${member.user.tag} timed out by ${msg.author.tag}`, 'moderation');
+        this.log(`Timed out ${member.user.tag} for ${duration}m: ${reason}`, 'moderation');
+    }
+
+    async handleKick(msg, args) {
+        const member = await this.resolveMember(msg, args[0]);
+        if (!member) return msg.reply({ content: '❌ Mention a user to kick.' });
+        const reason = args.slice(1).join(' ') || 'No reason provided';
+
+        try {
+            await member.kick(reason);
+        } catch (e) {
+            return msg.reply({ content: `❌ Unable to kick: ${e.message}` });
+        }
+
+        const embed = this.buildModEmbed({
+            title: '🥾 User Kicked',
+            description: `${member.user.tag} has been removed from the server.`,
+            color: '#fb7185',
+            target: member.user,
+            moderator: msg.author,
+            reason
+        });
+
+        await msg.channel.send({ embeds: [embed] });
+        await this.sendModLog(msg.guild, embed);
+        this.addServerEvent('Kick', `${member.user.tag} kicked by ${msg.author.tag}`, 'moderation');
+        this.log(`Kicked ${member.user.tag}: ${reason}`, 'moderation');
+    }
+
+    async handleBan(msg, args) {
+        const member = await this.resolveMember(msg, args[0]);
+        if (!member) return msg.reply({ content: '❌ Mention a user to ban.' });
+        const reason = args.slice(1).join(' ') || 'No reason provided';
+
+        try {
+            await member.ban({ reason });
+        } catch (e) {
+            return msg.reply({ content: `❌ Unable to ban: ${e.message}` });
+        }
+
+        const embed = this.buildModEmbed({
+            title: '🔨 User Banned',
+            description: `${member.user.tag} has been banned.`,
+            color: '#ef4444',
+            target: member.user,
+            moderator: msg.author,
+            reason
+        });
+
+        await msg.channel.send({ embeds: [embed] });
+        await this.sendModLog(msg.guild, embed);
+        this.addServerEvent('Ban', `${member.user.tag} banned by ${msg.author.tag}`, 'moderation');
+        this.log(`Banned ${member.user.tag}: ${reason}`, 'moderation');
+    }
+
+    async handlePurge(msg, args) {
+        const amount = parseInt(args[0], 10);
+        if (isNaN(amount) || amount < 1 || amount > 100) {
+            return msg.reply({ content: '❌ Provide a number between 1 and 100. Example: `!purge 20`' });
+        }
+
+        try {
+            const deleted = await msg.channel.bulkDelete(amount, true);
+            const embed = this.buildModEmbed({
+                title: '🧹 Messages Purged',
+                description: `Cleaned up **${deleted.size}** messages.`,
+                color: '#14b8a6',
+                moderator: msg.author
+            });
+            await msg.channel.send({ embeds: [embed] });
+            await this.sendModLog(msg.guild, embed);
+            this.addServerEvent('Purge', `${deleted.size} messages purged by ${msg.author.tag}`, 'moderation');
+            this.log(`Purged ${deleted.size} messages in #${msg.channel.name}`, 'moderation');
+        } catch (e) {
+            msg.reply({ content: `❌ Unable to purge: ${e.message}` });
+        }
+    }
 
     log(msg, type = 'info') {
         const entry = { message: msg, type, timestamp: new Date().toISOString() };
