@@ -575,7 +575,7 @@ class NovaBot {
   }
 
   setupEvents() {
-    this.client.once('ready', () => {
+    this.client.once('clientReady', () => {
       console.log(`🤖 ${this.client.user.tag} is online!`);
       this.log('Bot started successfully!', 'success');
       this.addEvent('Bot Online', `${this.client.user.tag} connected`, 'success');
