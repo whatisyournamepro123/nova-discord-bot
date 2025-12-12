@@ -1,4 +1,4 @@
-// server.js - COMPLETE ULTRA NOVA AI SYSTEM (FIXED)
+// server.js - COMPLETE ULTRA NOVA AI SYSTEM (FULLY FIXED)
 require('dotenv').config();
 const express = require('express');
 const http = require('http');
@@ -10,7 +10,6 @@ const {
 
 // ╔═══════════════════════════════════════════════════════════════════════════════════════╗
 // ║                           NOVA ULTRA AI ENGINE                                         ║
-// ║                    Advanced Reasoning & Decision Making System                         ║
 // ╚═══════════════════════════════════════════════════════════════════════════════════════╝
 
 class NovaUltraAI {
@@ -21,7 +20,6 @@ class NovaUltraAI {
     this.moderationHistory = new Map();
     this.thinkingCache = new Map();
     
-    // Advanced pattern detection
     this.patterns = {
       toxicity: /\b(fuck|shit|bitch|ass|dick|cunt|bastard|damn|hell)\b/gi,
       slurs: /\b(nigger|nigga|faggot|retard|spic|chink|kike)\b/gi,
@@ -29,34 +27,22 @@ class NovaUltraAI {
       spam: /(.)\1{5,}|(\b\w+\b)(\s+\1){3,}/gi,
       links: /(https?:\/\/[^\s]+)|(discord\.gg\/\w+)|(bit\.ly\/\w+)/gi,
       invites: /discord\.gg\/\w+|discordapp\.com\/invite\/\w+/gi,
-      selfPromo: /(sub|follow|like|check out|my channel|my server)/gi,
       scam: /(free nitro|gift card|click here|claim now|limited time)/gi,
       caps: /^[A-Z\s!?]{15,}$/,
-      zalgo: /[\u0300-\u036f\u0489]{3,}/g,
-      emoji: /[\u{1F300}-\u{1F9FF}]/gu
+      zalgo: /[\u0300-\u036f\u0489]{3,}/g
     };
 
-    // Sentiment lexicon for offline analysis
     this.sentimentLexicon = {
-      positive: ['good', 'great', 'awesome', 'amazing', 'love', 'like', 'thanks', 'thank', 'nice', 'cool', 'best', 'happy', 'glad', 'wonderful', 'excellent', 'perfect', 'beautiful', 'fantastic'],
-      negative: ['bad', 'hate', 'worst', 'terrible', 'awful', 'horrible', 'sucks', 'stupid', 'dumb', 'idiot', 'ugly', 'annoying', 'boring', 'angry', 'sad', 'disappointed'],
-      toxic: ['fuck', 'shit', 'bitch', 'ass', 'damn', 'crap', 'hell', 'dick', 'bastard', 'idiot', 'moron', 'loser', 'pathetic', 'trash', 'garbage']
+      positive: ['good', 'great', 'awesome', 'amazing', 'love', 'like', 'thanks', 'thank', 'nice', 'cool', 'best', 'happy', 'wonderful', 'excellent', 'perfect', 'beautiful'],
+      negative: ['bad', 'hate', 'worst', 'terrible', 'awful', 'horrible', 'sucks', 'stupid', 'dumb', 'ugly', 'annoying', 'boring', 'angry', 'sad'],
+      toxic: ['fuck', 'shit', 'bitch', 'ass', 'damn', 'crap', 'hell', 'dick', 'bastard', 'idiot', 'moron', 'loser', 'pathetic', 'trash']
     };
 
     console.log(this.groqKey ? '🧠 Nova Ultra AI Engine Online [GROQ ENABLED]' : '🧠 Nova Ultra AI Engine Online [FALLBACK MODE]');
   }
 
-  // ═══════════════════════════════════════════════════════════════════════════════════════
-  // CORE AI INTERFACE
-  // ═══════════════════════════════════════════════════════════════════════════════════════
-
   async think(prompt, systemContext, options = {}) {
     if (!this.groqKey) return null;
-
-    const cacheKey = `${prompt.substring(0, 50)}_${options.temperature || 0.7}`;
-    if (options.useCache && this.thinkingCache.has(cacheKey)) {
-      return this.thinkingCache.get(cacheKey);
-    }
 
     try {
       const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
@@ -72,42 +58,28 @@ class NovaUltraAI {
             { role: "user", content: prompt }
           ],
           max_tokens: options.maxTokens || 500,
-          temperature: options.temperature || 0.7,
-          top_p: options.topP || 0.9,
-          stream: false
+          temperature: options.temperature || 0.7
         })
       });
 
       const data = await response.json();
-      const result = data.choices?.[0]?.message?.content || null;
-
-      if (result && options.useCache) {
-        this.thinkingCache.set(cacheKey, result);
-        setTimeout(() => this.thinkingCache.delete(cacheKey), 300000);
-      }
-
-      return result;
+      return data.choices?.[0]?.message?.content || null;
     } catch (e) {
       console.error('AI Think Error:', e.message);
       return null;
     }
   }
 
-  // ═══════════════════════════════════════════════════════════════════════════════════════
-  // ULTRA ADVANCED MODERATION SYSTEM
-  // ═══════════════════════════════════════════════════════════════════════════════════════
-
   async moderateMessage(message, member, guildSettings) {
     const content = message.content;
-    const userId = member.id;
+    const oderId = member.id;
     const username = member.user.tag;
     const now = Date.now();
 
-    // Initialize user profile if needed
-    if (!this.userProfiles.has(userId)) {
-      this.userProfiles.set(userId, {
+    if (!this.userProfiles.has(oderId)) {
+      this.userProfiles.set(oderId, {
         oderId: oderId,
-        oderId: username,  // ← FIXED: was oderId: oderId
+        username: username,
         messages: [],
         warnings: 0,
         trustScore: 50,
@@ -120,23 +92,17 @@ class NovaUltraAI {
       });
     }
 
-    const profile = this.userProfiles.get(userId);
+    const profile = this.userProfiles.get(oderId);
     profile.lastSeen = now;
     profile.messagesAnalyzed++;
 
-    // Store message for context
     profile.messages.push({
       content: content.substring(0, 200),
       timestamp: now,
       channelId: message.channel.id
     });
 
-    // Keep only last 50 messages per user
     if (profile.messages.length > 50) profile.messages.shift();
-
-    // ═══════════════════════════════════════════════════════════════
-    // PHASE 1: QUICK LOCAL ANALYSIS (No AI needed)
-    // ═══════════════════════════════════════════════════════════════
 
     const quickAnalysis = this.quickAnalyze(content, profile);
 
@@ -144,15 +110,7 @@ class NovaUltraAI {
       return this.buildModerationResult(quickAnalysis, profile, 'quick');
     }
 
-    // ═══════════════════════════════════════════════════════════════
-    // PHASE 2: CONTEXT-AWARE ANALYSIS
-    // ═══════════════════════════════════════════════════════════════
-
     const contextAnalysis = this.analyzeContext(content, profile, message);
-
-    // ═══════════════════════════════════════════════════════════════
-    // PHASE 3: AI DEEP ANALYSIS (For ambiguous cases)
-    // ═══════════════════════════════════════════════════════════════
 
     let aiAnalysis = null;
     const needsAI = quickAnalysis.score > 20 || contextAnalysis.suspicious || content.length > 50;
@@ -161,13 +119,7 @@ class NovaUltraAI {
       aiAnalysis = await this.deepAnalyze(content, profile, message, guildSettings);
     }
 
-    // ═══════════════════════════════════════════════════════════════
-    // PHASE 4: DECISION SYNTHESIS
-    // ═══════════════════════════════════════════════════════════════
-
     const finalDecision = this.synthesizeDecision(quickAnalysis, contextAnalysis, aiAnalysis, profile);
-
-    // Update user profile based on decision
     this.updateProfile(profile, finalDecision);
 
     return finalDecision;
@@ -178,59 +130,48 @@ class NovaUltraAI {
     const flags = [];
     const lower = content.toLowerCase();
 
-    // Check for slurs (highest priority)
     if (this.patterns.slurs.test(content)) {
       score += 100;
       flags.push({ type: 'slur', severity: 'critical', detail: 'Racial/discriminatory slur detected' });
     }
 
-    // Check for threats
     if (this.patterns.threats.test(content)) {
       score += 80;
       flags.push({ type: 'threat', severity: 'critical', detail: 'Threat of violence detected' });
     }
 
-    // Check for scams
     if (this.patterns.scam.test(lower)) {
       score += 70;
       flags.push({ type: 'scam', severity: 'high', detail: 'Potential scam/phishing' });
     }
 
-    // Check for toxicity
     const toxicMatches = content.match(this.patterns.toxicity);
     if (toxicMatches) {
       score += Math.min(toxicMatches.length * 15, 60);
       flags.push({ type: 'toxicity', severity: 'medium', detail: `${toxicMatches.length} toxic word(s)` });
     }
 
-    // Check for spam patterns
     if (this.patterns.spam.test(content)) {
       score += 40;
       flags.push({ type: 'spam', severity: 'medium', detail: 'Spam pattern detected' });
     }
 
-    // Check for excessive caps
     if (this.patterns.caps.test(content) && content.length > 15) {
       score += 25;
       flags.push({ type: 'caps', severity: 'low', detail: 'Excessive caps' });
     }
 
-    // Check for discord invites
     if (this.patterns.invites.test(content)) {
       score += 35;
       flags.push({ type: 'invite', severity: 'medium', detail: 'Discord invite link' });
     }
 
-    // Check for zalgo text
     if (this.patterns.zalgo.test(content)) {
       score += 30;
       flags.push({ type: 'zalgo', severity: 'low', detail: 'Zalgo/corrupted text' });
     }
 
-    // Calculate sentiment
     const sentiment = this.calculateSentiment(lower);
-
-    // Adjust score based on trust
     score = Math.round(score * (1 - (profile.trustScore - 50) / 200));
 
     let severity;
@@ -266,14 +207,12 @@ class NovaUltraAI {
     const suspicious = [];
     let contextScore = 0;
 
-    // Check message frequency (spam detection)
     const recentMessages = profile.messages.filter(m => m.timestamp > Date.now() - 10000);
     if (recentMessages.length > 5) {
       suspicious.push('Rapid message sending');
       contextScore += 20;
     }
 
-    // Check for repeated content
     const duplicates = profile.messages.filter(m => 
       m.content === content.substring(0, 200) && m.timestamp > Date.now() - 60000
     );
@@ -282,19 +221,16 @@ class NovaUltraAI {
       contextScore += 30;
     }
 
-    // Check user history
     if (profile.warnings >= 3) {
       suspicious.push('Multiple prior warnings');
       contextScore += 15;
     }
 
-    // Check trust score
     if (profile.trustScore < 30) {
       suspicious.push('Low trust score');
       contextScore += 10;
     }
 
-    // Check for escalating behavior
     const recentViolations = profile.violations.filter(v => v.timestamp > Date.now() - 3600000);
     if (recentViolations.length >= 2) {
       suspicious.push('Recent violation history');
@@ -322,30 +258,20 @@ USER CONTEXT:
 - Warning Count: ${profile.warnings}
 - Recent Messages: "${recentContext}"
 - Account Age in Server: ${Math.floor((Date.now() - profile.firstSeen) / 86400000)} days
-- Total Messages Analyzed: ${profile.messagesAnalyzed}
-
-ANALYSIS REQUIREMENTS:
-1. Detect subtle toxicity, passive aggression, or veiled insults
-2. Identify manipulation, gaslighting, or emotional abuse
-3. Check for coded language, dog whistles, or hidden meanings
-4. Assess intent: Is this genuinely harmful or just edgy humor?
-5. Consider cultural context and sarcasm
-6. Evaluate if action would be proportionate
 
 RESPOND IN JSON ONLY:
 {
   "harmful": true/false,
   "confidence": 0-100,
   "toxicityScore": 0-100,
-  "categories": ["list", "of", "violation", "types"],
+  "categories": ["list"],
   "intent": "malicious/careless/joking/unclear",
-  "subtleIssues": ["list", "of", "subtle", "problems"],
   "recommendation": "ignore/warn/delete/mute/ban",
-  "reasoning": "detailed explanation of decision",
-  "suggestedResponse": "what to tell the user if warned"
+  "reasoning": "explanation",
+  "suggestedResponse": "what to tell user"
 }`;
 
-    const response = await this.think(prompt, `You are an expert Discord moderator AI. You understand internet culture, memes, sarcasm, and context. You are fair but firm. You protect communities while respecting free expression. False positives damage trust - only flag genuinely problematic content. Consider the FULL context before deciding. Output valid JSON only.`, { temperature: 0.3, maxTokens: 400 });
+    const response = await this.think(prompt, 'You are an expert Discord moderator AI. Output valid JSON only.', { temperature: 0.3, maxTokens: 400 });
 
     if (response) {
       try {
@@ -365,14 +291,12 @@ RESPOND IN JSON ONLY:
     let severity = 'none';
     let confidence = 0;
 
-    // Critical violations always act
     if (quick.severity === 'critical') {
       action = quick.flags.some(f => f.type === 'slur' || f.type === 'threat') ? 'ban' : 'delete_warn';
       reason = quick.flags.map(f => f.detail).join(', ');
       severity = 'critical';
       confidence = 95;
     }
-    // High severity with context
     else if (quick.severity === 'high' || (quick.score + context.score) > 60) {
       if (ai && ai.harmful) {
         action = ai.recommendation === 'ban' ? 'mute' : ai.recommendation;
@@ -386,7 +310,6 @@ RESPOND IN JSON ONLY:
         confidence = 70;
       }
     }
-    // Medium severity - AI decides
     else if (quick.severity === 'medium' && ai) {
       if (ai.harmful && ai.confidence > 60) {
         action = ai.recommendation;
@@ -395,7 +318,6 @@ RESPOND IN JSON ONLY:
         confidence = ai.confidence;
       }
     }
-    // Context-based action
     else if (context.score > 40) {
       action = 'warn';
       reason = context.reasons.join(', ');
@@ -403,7 +325,6 @@ RESPOND IN JSON ONLY:
       confidence = 60;
     }
 
-    // Trust score adjustment
     if (profile.trustScore > 80 && severity !== 'critical') {
       confidence -= 15;
       if (confidence < 50) action = 'none';
@@ -424,10 +345,10 @@ RESPOND IN JSON ONLY:
 
   getDefaultResponse(severity) {
     const responses = {
-      critical: 'Your message violated our community guidelines and has been removed. Further violations will result in a ban.',
-      high: 'Please keep the chat respectful. Your message was removed for violating our rules.',
-      medium: 'Hey! Let\'s keep things friendly here. Please review our community guidelines.',
-      low: 'Just a heads up - please be mindful of our community rules.',
+      critical: 'Your message violated our community guidelines. Further violations will result in a ban.',
+      high: 'Please keep the chat respectful. Your message was removed.',
+      medium: 'Let\'s keep things friendly here. Please review our guidelines.',
+      low: 'Please be mindful of our community rules.',
       none: ''
     };
     return responses[severity] || '';
@@ -446,21 +367,13 @@ RESPOND IN JSON ONLY:
         profile.warnings++;
       }
 
-      // Decrease trust score
       const trustPenalty = { critical: 30, high: 20, medium: 10, low: 5 };
       profile.trustScore = Math.max(0, profile.trustScore - (trustPenalty[decision.severity] || 0));
     } else {
-      // Slowly increase trust for good behavior
       profile.positiveActions++;
       if (profile.positiveActions % 10 === 0) {
         profile.trustScore = Math.min(100, profile.trustScore + 1);
       }
-    }
-
-    // Update average sentiment
-    if (decision.quickAnalysis?.sentiment) {
-      const s = decision.quickAnalysis.sentiment;
-      profile.averageSentiment = (profile.averageSentiment * 0.9) + (s.overall * 0.1);
     }
   }
 
@@ -479,10 +392,6 @@ RESPOND IN JSON ONLY:
     };
   }
 
-  // ═══════════════════════════════════════════════════════════════════════════════════════
-  // USER ANALYSIS FOR VERIFICATION
-  // ═══════════════════════════════════════════════════════════════════════════════════════
-
   async analyzeNewUser(user) {
     const now = Date.now();
     const accountAge = now - user.createdTimestamp;
@@ -492,22 +401,18 @@ RESPOND IN JSON ONLY:
     let riskScore = 0;
     const flags = [];
 
-    // Account age analysis
     if (hoursOld < 1) { riskScore += 50; flags.push('🚨 Account < 1 hour old'); }
     else if (hoursOld < 24) { riskScore += 35; flags.push('⚠️ Account < 24 hours old'); }
     else if (daysOld < 7) { riskScore += 20; flags.push('📝 Account < 1 week old'); }
     else if (daysOld < 30) { riskScore += 10; }
     else if (daysOld > 365) { riskScore -= 10; }
 
-    // Avatar check
     if (!user.avatar) { riskScore += 15; flags.push('👤 No avatar'); }
     else if (user.avatar.startsWith('a_')) { riskScore -= 5; }
 
-    // Username analysis
     const username = user.username.toLowerCase();
-    if (/^[a-z]{2,4}\d{4,}$/.test(username)) { riskScore += 20; flags.push('🤖 Auto-generated name pattern'); }
-    if (/(free|nitro|gift|hack|bot|spam|discord\.gg)/i.test(username)) { riskScore += 30; flags.push('🚫 Suspicious keywords in name'); }
-    if (/[\u0300-\u036f\u0489]/.test(username)) { riskScore += 10; flags.push('🔣 Zalgo text'); }
+    if (/^[a-z]{2,4}\d{4,}$/.test(username)) { riskScore += 20; flags.push('🤖 Auto-generated name'); }
+    if (/(free|nitro|gift|hack|bot|spam)/i.test(username)) { riskScore += 30; flags.push('🚫 Suspicious keywords'); }
 
     riskScore = Math.max(0, Math.min(100, riskScore));
 
@@ -519,8 +424,8 @@ RESPOND IN JSON ONLY:
 
     return {
       oderId: user.id,
-      oderId: user.tag,
-      oderId: user.displayAvatarURL(),
+      username: user.tag,
+      avatar: user.displayAvatarURL(),
       daysOld,
       hoursOld,
       riskScore,
@@ -530,26 +435,17 @@ RESPOND IN JSON ONLY:
     };
   }
 
-  // ═══════════════════════════════════════════════════════════════════════════════════════
-  // CHALLENGE GENERATION
-  // ═══════════════════════════════════════════════════════════════════════════════════════
-
   async generateChallenge(difficulty) {
-    const aiPrompt = `Generate a ${difficulty} verification challenge that a human can solve easily but a bot cannot.
-
-Types: math, pattern, logic, knowledge, emoji, word
-Make it FUN and engaging!
-
-JSON ONLY:
+    const aiPrompt = `Generate a ${difficulty} verification challenge. JSON ONLY:
 {
   "question": "the question",
   "answer": "correct answer",
   "options": ["correct", "wrong1", "wrong2", "wrong3"],
   "hint": "helpful hint",
-  "type": "challenge type"
+  "type": "math/pattern/knowledge/emoji"
 }`;
 
-    const response = await this.think(aiPrompt, 'Create fun, varied verification challenges. Humans should solve them in under 15 seconds. JSON only.', { temperature: 0.95, maxTokens: 200 });
+    const response = await this.think(aiPrompt, 'Create fun verification challenges. JSON only.', { temperature: 0.95, maxTokens: 200 });
 
     if (response) {
       try {
@@ -563,7 +459,6 @@ JSON ONLY:
       } catch (e) {}
     }
 
-    // Fallback
     const fallbacks = [
       { question: "What is 7 + 8?", answer: "15", options: ["15", "14", "16", "13"], hint: "Basic math", type: "math" },
       { question: "🔵🔴🔵🔴🔵❓", answer: "🔴", options: ["🔴", "🔵", "🟢", "🟡"], hint: "Pattern!", type: "pattern" },
@@ -584,39 +479,21 @@ JSON ONLY:
     return { correct: false };
   }
 
-  // ═══════════════════════════════════════════════════════════════════════════════════════
-  // TICKET SUPPORT
-  // ═══════════════════════════════════════════════════════════════════════════════════════
-
   async categorizeTicket(content) {
-    const r = await this.think('Categorize this support request: ' + content, 'Reply with ONLY one word: general, technical, billing, report, or other', { temperature: 0, maxTokens: 20 });
+    const r = await this.think('Categorize: ' + content, 'Reply ONLY: general, technical, billing, report, or other', { temperature: 0, maxTokens: 20 });
     const valid = ['general', 'technical', 'billing', 'report', 'other'];
     return valid.includes((r || '').toLowerCase().trim()) ? r.toLowerCase().trim() : 'general';
   }
 
   async suggestResponse(messages, category) {
     const convo = messages.slice(-5).map(m => `${m.author}: ${m.content}`).join('\n');
-    return await this.think(`Suggest a helpful support response for this ${category} ticket:\n${convo}`, 'You are a professional support agent. Be helpful, concise, and friendly. Under 200 characters.', { temperature: 0.7, maxTokens: 150 });
-  }
-
-  async analyzeTicket(messages) {
-    const convo = messages.slice(-10).map(m => `${m.author}: ${m.content}`).join('\n');
-    const response = await this.think(
-      `Analyze this ticket:\n${convo}\n\nJSON: {"sentiment":"positive/neutral/negative","urgency":"low/medium/high","summary":"one sentence"}`,
-      'Analyze tickets briefly. JSON only.', { temperature: 0.3, maxTokens: 100 }
-    );
-    try {
-      return JSON.parse(response.replace(/```json?|```/g, '').trim());
-    } catch (e) {
-      return { sentiment: 'neutral', urgency: 'medium', summary: 'Support request' };
-    }
+    return await this.think(`Suggest response for ${category} ticket:\n${convo}`, 'Be helpful and concise. Under 200 chars.', { temperature: 0.7, maxTokens: 150 });
   }
 
   async chat(message, username) {
-    return await this.think(`${username}: ${message}`, 'You are Nova, a friendly AI assistant. Be helpful, use emojis, keep responses under 250 characters.', { temperature: 0.8, maxTokens: 200 }) || 'Hey there! 👋 How can I help?';
+    return await this.think(`${username}: ${message}`, 'You are Nova, a friendly AI. Use emojis, under 250 chars.', { temperature: 0.8, maxTokens: 200 }) || 'Hey there! 👋';
   }
 
-  // Get stats for dashboard
   getStats() {
     return {
       enabled: !!this.groqKey,
@@ -625,8 +502,8 @@ JSON ONLY:
     };
   }
 
-  getUserProfile(userId) {
-    return this.userProfiles.get(userId);
+  getUserProfile(oderId) {
+    return this.userProfiles.get(oderId);
   }
 }
 
@@ -647,15 +524,12 @@ class NovaBot {
     });
 
     this.ai = new NovaUltraAI();
-    
-    // Data stores
     this.sessions = new Map();
     this.settings = new Map();
     this.tickets = new Map();
     this.ticketChannels = new Map();
     this.ticketCounter = 1;
     
-    // Statistics
     this.stats = {
       verified: 0,
       failed: 0,
@@ -679,7 +553,6 @@ class NovaBot {
   getSettings(guildId) {
     if (!this.settings.has(guildId)) {
       this.settings.set(guildId, {
-        // Moderation
         modEnabled: true,
         detectSpam: true,
         detectToxicity: true,
@@ -690,7 +563,6 @@ class NovaBot {
         autoMute: true,
         maxWarnings: 3,
         muteDuration: 10,
-        // Verification
         verifyEnabled: true,
         channelId: null,
         verifiedRoleId: null,
@@ -708,10 +580,6 @@ class NovaBot {
       this.log('Bot started successfully!', 'success');
       this.addEvent('Bot Online', `${this.client.user.tag} connected`, 'success');
     });
-
-    // ═══════════════════════════════════════════════════════════════
-    // MEMBER JOIN - VERIFICATION
-    // ═══════════════════════════════════════════════════════════════
 
     this.client.on('guildMemberAdd', async (member) => {
       this.addEvent('Member Joined', `${member.user.tag} joined`, 'join');
@@ -734,7 +602,6 @@ class NovaBot {
         challenges.push(await this.ai.generateChallenge(i === 0 ? 'easy' : 'medium'));
       }
 
-      // FIXED: Proper session object with correct property names
       const session = {
         memberId: member.id,
         guildId: member.guild.id,
@@ -751,11 +618,9 @@ class NovaBot {
       };
 
       this.sessions.set(`${member.id}-${member.guild.id}`, session);
-
       await this.sendVerificationEmbed(member, channel, session);
       this.emitUpdate();
 
-      // Timeout
       setTimeout(async () => {
         const s = this.sessions.get(`${member.id}-${member.guild.id}`);
         if (s && s.status === 'pending') {
@@ -774,10 +639,6 @@ class NovaBot {
       this.addEvent('Member Left', `${member.user.tag} left`, 'leave');
     });
 
-    // ═══════════════════════════════════════════════════════════════
-    // INTERACTIONS
-    // ═══════════════════════════════════════════════════════════════
-
     this.client.on('interactionCreate', async (interaction) => {
       try {
         if (interaction.isButton()) {
@@ -791,17 +652,12 @@ class NovaBot {
       }
     });
 
-    // ═══════════════════════════════════════════════════════════════
-    // MESSAGES - ULTRA MODERATION
-    // ═══════════════════════════════════════════════════════════════
-
     this.client.on('messageCreate', async (msg) => {
       if (msg.author.bot || !msg.guild) return;
 
       const settings = this.getSettings(msg.guild.id);
       this.stats.messagesScanned++;
 
-      // Ticket channel handling
       if (this.ticketChannels.has(msg.channel.id)) {
         const ticketId = this.ticketChannels.get(msg.channel.id);
         const ticket = this.tickets.get(ticketId);
@@ -821,17 +677,12 @@ class NovaBot {
         return;
       }
 
-      // ═══════════════════════════════════════════════════════════════
-      // ULTRA AI MODERATION
-      // ═══════════════════════════════════════════════════════════════
-
       if (settings.modEnabled && !msg.member.permissions.has(PermissionFlagsBits.Administrator)) {
         const result = await this.ai.moderateMessage(msg, msg.member, settings);
         
         if (result.shouldAct) {
           this.stats.aiDetections++;
           
-          // Execute action
           try {
             if (result.action === 'delete' || result.action === 'delete_warn') {
               if (settings.autoDelete) {
@@ -856,13 +707,12 @@ class NovaBot {
                 this.log(`Warned ${msg.author.tag}: ${result.reason}`, 'moderation');
                 this.addEvent('Auto-Moderation', `${msg.author.tag}: ${result.reason}`, 'moderation');
 
-                // Auto-mute on max warnings
                 if (settings.autoMute && profile && profile.warnings >= settings.maxWarnings) {
                   try {
                     await msg.member.timeout(settings.muteDuration * 60 * 1000, 'Max warnings reached');
                     this.stats.mutesDone++;
                     this.log(`Muted ${msg.author.tag} for ${settings.muteDuration}m`, 'moderation');
-                    this.addEvent('Auto-Mute', `${msg.author.tag} muted (${settings.muteDuration}m)`, 'moderation');
+                    this.addEvent('Auto-Mute', `${msg.author.tag} muted`, 'moderation');
                   } catch (e) {}
                 }
               }
@@ -892,10 +742,6 @@ class NovaBot {
           return;
         }
       }
-
-      // ═══════════════════════════════════════════════════════════════
-      // COMMANDS
-      // ═══════════════════════════════════════════════════════════════
 
       const content = msg.content.toLowerCase();
       const isAdmin = msg.member.permissions.has(PermissionFlagsBits.Administrator);
@@ -940,10 +786,6 @@ class NovaBot {
     });
   }
 
-  // ═══════════════════════════════════════════════════════════════════════════════════════
-  // VERIFICATION SYSTEM
-  // ═══════════════════════════════════════════════════════════════════════════════════════
-
   async sendVerificationEmbed(member, channel, session) {
     const challenge = session.challenges[0];
     const analysis = session.analysis;
@@ -954,7 +796,7 @@ class NovaBot {
       .setThumbnail(session.avatar)
       .setDescription(`Welcome ${member}!\n\nComplete the challenge below to access the server.\n\n━━━━━━━━━━━━━━━━━━━━━━`)
       .addFields(
-        { name: `📝 Challenge 1/${session.challenges.length}`, value: `\`\`\`${challenge.question}\`\`\``, inline: false },
+        { name: `📝 Challenge 1/${session.challenges.length}`, value: '```' + challenge.question + '```', inline: false },
         { name: '💡 Hint', value: challenge.hint || 'Think!', inline: true },
         { name: '🔄 Attempts', value: `${session.attempts}/${session.maxAttempts}`, inline: true },
         { name: '⚠️ Risk', value: analysis.riskLevel.toUpperCase(), inline: true }
@@ -1030,7 +872,7 @@ class NovaBot {
           .setColor('#57F287')
           .setTitle('✅ Correct!')
           .setDescription(`Challenge ${session.currentIndex + 1}/${session.challenges.length}`)
-          .addFields({ name: '📝 Next Challenge', value: `\`\`\`${next.question}\`\`\`` });
+          .addFields({ name: '📝 Next Challenge', value: '```' + next.question + '```' });
 
         const row = new ActionRowBuilder();
         const styles = [ButtonStyle.Primary, ButtonStyle.Secondary, ButtonStyle.Success, ButtonStyle.Danger];
@@ -1074,7 +916,7 @@ class NovaBot {
           .setColor('#ffaa00')
           .setTitle('❌ Wrong! Try Again')
           .addFields(
-            { name: '📝 New Challenge', value: `\`\`\`${newChallenge.question}\`\`\`` },
+            { name: '📝 New Challenge', value: '```' + newChallenge.question + '```' },
             { name: 'Attempts Left', value: `${session.maxAttempts - session.attempts}` }
           );
 
@@ -1127,10 +969,6 @@ class NovaBot {
     msg.reply({ embeds: [new EmbedBuilder().setColor('#ffffff').setDescription(`✅ Test sent to ${channel}`)] });
   }
 
-  // ═══════════════════════════════════════════════════════════════════════════════════════
-  // TICKET SYSTEM
-  // ═══════════════════════════════════════════════════════════════════════════════════════
-
   async createTicket(msg, reason) {
     const user = msg.author;
     const guild = msg.guild;
@@ -1156,12 +994,11 @@ class NovaBot {
         ]
       });
 
-      // FIXED: Proper ticket object with correct property names
       const ticket = {
         id: ticketId,
         oderId: user.id,
-        oderId: user.tag,
-        oderId: user.displayAvatarURL(),
+        userName: user.tag,
+        userAvatar: user.displayAvatarURL(),
         channelId: channel.id,
         guildId: guild.id,
         guildName: guild.name,
@@ -1277,10 +1114,6 @@ class NovaBot {
     }
   }
 
-  // ═══════════════════════════════════════════════════════════════════════════════════════
-  // HELP & SETUP
-  // ═══════════════════════════════════════════════════════════════════════════════════════
-
   async sendHelp(msg) {
     const embed = new EmbedBuilder()
       .setColor('#ffffff')
@@ -1308,10 +1141,6 @@ class NovaBot {
       );
     await msg.reply({ embeds: [embed] });
   }
-
-  // ═══════════════════════════════════════════════════════════════════════════════════════
-  // UTILITIES
-  // ═══════════════════════════════════════════════════════════════════════════════════════
 
   log(message, type = 'info') {
     const entry = { message, type, timestamp: new Date().toISOString() };
@@ -1388,29 +1217,16 @@ const bot = new NovaBot(io);
 
 app.use(express.json());
 
-// API endpoints
 app.get('/api/stats', (req, res) => res.json(bot.getStats()));
 app.get('/api/tickets', (req, res) => res.json(bot.getAllTickets()));
 app.get('/api/sessions', (req, res) => res.json(bot.getPendingSessions()));
 app.get('/api/logs', (req, res) => res.json(bot.logs));
 app.get('/api/events', (req, res) => res.json(bot.serverEvents));
 
-app.get('/api/settings/:guildId', (req, res) => {
-  res.json(bot.getSettings(req.params.guildId));
-});
-
-app.post('/api/settings/:guildId', (req, res) => {
-  const settings = bot.getSettings(req.params.guildId);
-  Object.assign(settings, req.body);
-  res.json(settings);
-});
-
-// Dashboard HTML
 app.get('/', (req, res) => {
   res.send(getDashboardHTML());
 });
 
-// Socket.IO
 io.on('connection', (socket) => {
   console.log('📊 Dashboard connected');
 
@@ -1454,42 +1270,391 @@ io.on('connection', (socket) => {
     }
   });
 
-  socket.on('updateSettings', async (data) => {
-    if (data.guildId) {
-      const settings = bot.getSettings(data.guildId);
-      Object.assign(settings, data.settings);
-      socket.emit('settings', settings);
-    }
-  });
-
   socket.on('disconnect', () => clearInterval(interval));
 });
 
-// Dashboard HTML function (keeping it short here, your existing HTML is fine)
 function getDashboardHTML() {
-  // Your existing dashboard HTML goes here
-  // I'm keeping your original HTML since it was correct
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Nova AI Dashboard</title>
-  <!-- Your existing styles and HTML -->
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-0: #000; --bg-1: #050505; --bg-2: #0a0a0a; --bg-3: #0f0f0f;
+      --bg-4: #141414; --bg-5: #1a1a1a; --bg-6: #202020;
+      --border-1: #1a1a1a; --border-2: #252525; --border-3: #303030;
+      --text-0: #fff; --text-1: #e0e0e0; --text-2: #a0a0a0; --text-3: #666;
+      --success: #10b981; --warning: #f59e0b; --error: #ef4444; --info: #3b82f6;
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { height: 100%; overflow: hidden; }
+    body { font-family: 'Inter', sans-serif; background: var(--bg-0); color: var(--text-0); }
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border-2); border-radius: 3px; }
+    .app { display: flex; height: 100vh; }
+    .sidebar { width: 260px; background: var(--bg-1); border-right: 1px solid var(--border-1); display: flex; flex-direction: column; }
+    .logo { padding: 20px; border-bottom: 1px solid var(--border-1); display: flex; align-items: center; gap: 12px; }
+    .logo-icon { width: 40px; height: 40px; background: var(--bg-5); border: 1px solid var(--border-2); border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 20px; }
+    .logo-text { font-size: 1.3rem; font-weight: 800; }
+    .logo-sub { font-size: 0.65rem; color: var(--text-3); text-transform: uppercase; letter-spacing: 1px; }
+    .nav { flex: 1; padding: 16px; overflow-y: auto; }
+    .nav-section { margin-bottom: 20px; }
+    .nav-label { font-size: 0.6rem; font-weight: 700; color: var(--text-3); text-transform: uppercase; letter-spacing: 1.5px; padding: 0 12px; margin-bottom: 8px; }
+    .nav-item { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-radius: 8px; cursor: pointer; color: var(--text-2); font-size: 0.85rem; font-weight: 500; transition: all 0.2s; }
+    .nav-item:hover { background: var(--bg-3); color: var(--text-1); }
+    .nav-item.active { background: var(--text-0); color: var(--bg-0); font-weight: 600; }
+    .nav-item .icon { font-size: 1.1rem; width: 22px; text-align: center; }
+    .nav-item .badge { margin-left: auto; background: var(--bg-5); padding: 2px 8px; border-radius: 12px; font-size: 0.65rem; font-weight: 700; }
+    .nav-item.active .badge { background: rgba(0,0,0,0.15); }
+    .sidebar-footer { padding: 16px; border-top: 1px solid var(--border-1); }
+    .status { display: flex; align-items: center; gap: 8px; padding: 10px 14px; background: var(--bg-3); border-radius: 8px; font-size: 0.8rem; color: var(--text-2); }
+    .status-dot { width: 8px; height: 8px; background: var(--success); border-radius: 50%; animation: pulse 2s infinite; }
+    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+    .main { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+    .header { padding: 18px 28px; border-bottom: 1px solid var(--border-1); display: flex; justify-content: space-between; align-items: center; background: var(--bg-1); }
+    .header h1 { font-size: 1.4rem; font-weight: 700; }
+    .header-stats { display: flex; gap: 28px; }
+    .header-stat { text-align: right; }
+    .header-stat .value { font-size: 1.4rem; font-weight: 800; }
+    .header-stat .label { font-size: 0.65rem; color: var(--text-3); text-transform: uppercase; letter-spacing: 0.5px; }
+    .content { flex: 1; overflow: hidden; }
+    .tab-content { display: none; height: 100%; }
+    .tab-content.active { display: flex; }
+    .dashboard { flex: 1; padding: 28px; overflow-y: auto; }
+    .stats-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 14px; margin-bottom: 28px; }
+    .stat-card { background: var(--bg-2); border: 1px solid var(--border-1); border-radius: 14px; padding: 20px; }
+    .stat-card:hover { border-color: var(--border-2); transform: translateY(-2px); transition: all 0.2s; }
+    .stat-card .icon-wrap { width: 42px; height: 42px; background: var(--bg-4); border: 1px solid var(--border-2); border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 1.2rem; margin-bottom: 14px; }
+    .stat-card .value { font-size: 2rem; font-weight: 800; margin-bottom: 4px; }
+    .stat-card .label { font-size: 0.75rem; color: var(--text-3); }
+    .stat-card.success .value { color: var(--success); }
+    .stat-card.warning .value { color: var(--warning); }
+    .stat-card.error .value { color: var(--error); }
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+    .card { background: var(--bg-2); border: 1px solid var(--border-1); border-radius: 14px; overflow: hidden; }
+    .card-header { padding: 16px 20px; border-bottom: 1px solid var(--border-1); font-weight: 600; font-size: 0.9rem; background: var(--bg-3); display: flex; justify-content: space-between; }
+    .card-body { padding: 14px; max-height: 350px; overflow-y: auto; }
+    .event-item { padding: 12px 14px; border-radius: 8px; margin-bottom: 8px; background: var(--bg-4); border-left: 3px solid var(--border-2); }
+    .event-item.success { border-color: var(--success); }
+    .event-item.warning { border-color: var(--warning); }
+    .event-item.moderation { border-color: var(--error); }
+    .event-item.ticket { border-color: var(--text-0); }
+    .event-item.join { border-color: var(--success); }
+    .event-item.leave { border-color: var(--warning); }
+    .event-title { font-weight: 600; font-size: 0.85rem; margin-bottom: 4px; }
+    .event-desc { font-size: 0.75rem; color: var(--text-2); }
+    .event-time { font-size: 0.65rem; color: var(--text-3); margin-top: 6px; }
+    .tickets-container { display: flex; flex: 1; }
+    .tickets-list { width: 320px; background: var(--bg-1); border-right: 1px solid var(--border-1); display: flex; flex-direction: column; }
+    .tickets-header { padding: 20px; border-bottom: 1px solid var(--border-1); }
+    .tickets-header h2 { font-size: 1rem; font-weight: 700; margin-bottom: 14px; }
+    .search-box { position: relative; }
+    .search-box input { width: 100%; padding: 12px 16px 12px 40px; background: var(--bg-3); border: 1px solid var(--border-2); border-radius: 10px; color: var(--text-0); font-size: 0.85rem; }
+    .search-box input:focus { outline: none; border-color: var(--text-0); }
+    .search-box::before { content: '🔍'; position: absolute; left: 14px; top: 50%; transform: translateY(-50%); font-size: 0.9rem; }
+    .tickets-scroll { flex: 1; overflow-y: auto; padding: 14px; }
+    .ticket-card { background: var(--bg-3); border: 1px solid var(--border-1); border-radius: 12px; padding: 16px; margin-bottom: 10px; cursor: pointer; transition: all 0.2s; }
+    .ticket-card:hover { border-color: var(--border-2); transform: translateX(4px); }
+    .ticket-card.active { border-color: var(--text-0); background: var(--bg-4); }
+    .ticket-top { display: flex; justify-content: space-between; margin-bottom: 10px; }
+    .ticket-id { font-weight: 700; font-size: 0.9rem; }
+    .ticket-badge { font-size: 0.6rem; padding: 3px 8px; border-radius: 5px; background: var(--bg-5); color: var(--text-2); text-transform: uppercase; font-weight: 700; }
+    .ticket-user { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+    .ticket-avatar { width: 24px; height: 24px; border-radius: 6px; background: var(--bg-5); }
+    .ticket-username { font-size: 0.8rem; color: var(--text-2); }
+    .ticket-preview { font-size: 0.75rem; color: var(--text-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .ticket-meta { display: flex; justify-content: space-between; margin-top: 10px; font-size: 0.65rem; color: var(--text-3); }
+    .chat-area { flex: 1; display: flex; flex-direction: column; background: var(--bg-0); }
+    .chat-header { padding: 18px 24px; border-bottom: 1px solid var(--border-1); background: var(--bg-1); display: flex; justify-content: space-between; align-items: center; }
+    .chat-header-info { display: flex; align-items: center; gap: 14px; }
+    .chat-header-avatar { width: 48px; height: 48px; border-radius: 12px; background: var(--bg-4); border: 2px solid var(--border-2); }
+    .chat-header-text h3 { font-size: 1rem; font-weight: 700; margin-bottom: 2px; }
+    .chat-header-text span { font-size: 0.75rem; color: var(--text-3); }
+    .chat-actions { display: flex; gap: 8px; }
+    .btn { padding: 10px 20px; border: none; border-radius: 8px; font-size: 0.8rem; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 6px; transition: all 0.2s; }
+    .btn:hover { transform: translateY(-2px); }
+    .btn-primary { background: var(--text-0); color: var(--bg-0); }
+    .btn-secondary { background: var(--bg-4); color: var(--text-0); border: 1px solid var(--border-2); }
+    .btn-danger { background: var(--error); color: white; }
+    .chat-messages { flex: 1; overflow-y: auto; padding: 24px; display: flex; flex-direction: column; gap: 16px; }
+    .message { display: flex; gap: 12px; max-width: 70%; }
+    .message.staff { margin-left: auto; flex-direction: row-reverse; }
+    .message-avatar { width: 40px; height: 40px; border-radius: 10px; background: var(--bg-4); flex-shrink: 0; }
+    .message-content { background: var(--bg-3); border: 1px solid var(--border-1); border-radius: 14px; padding: 14px 18px; }
+    .message.staff .message-content { background: var(--bg-4); border-color: var(--border-2); }
+    .message-author { font-size: 0.75rem; font-weight: 600; color: var(--text-2); margin-bottom: 4px; }
+    .message-text { font-size: 0.85rem; line-height: 1.5; }
+    .message-time { font-size: 0.65rem; color: var(--text-3); margin-top: 6px; }
+    .chat-input-area { padding: 20px 24px; border-top: 1px solid var(--border-1); background: var(--bg-1); }
+    .ai-suggestion { background: var(--bg-3); border: 1px solid var(--border-2); border-radius: 10px; padding: 12px 16px; margin-bottom: 12px; display: none; }
+    .ai-suggestion.show { display: block; }
+    .ai-suggestion-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+    .ai-suggestion-label { font-size: 0.65rem; font-weight: 700; color: var(--text-3); text-transform: uppercase; }
+    .ai-suggestion-text { font-size: 0.85rem; color: var(--text-2); }
+    .chat-input-row { display: flex; gap: 12px; }
+    .chat-input { flex: 1; padding: 14px 18px; background: var(--bg-3); border: 1px solid var(--border-2); border-radius: 12px; color: var(--text-0); font-size: 0.85rem; resize: none; min-height: 50px; max-height: 120px; }
+    .chat-input:focus { outline: none; border-color: var(--text-0); }
+    .empty-state { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; color: var(--text-3); }
+    .empty-state-icon { font-size: 4rem; margin-bottom: 16px; opacity: 0.2; }
+    .empty-state h3 { font-size: 1.2rem; color: var(--text-2); margin-bottom: 6px; }
+    .verification-container { flex: 1; padding: 28px; overflow-y: auto; }
+    .section-header { margin-bottom: 20px; }
+    .section-header h2 { font-size: 1.1rem; font-weight: 700; }
+    .session-card { background: var(--bg-2); border: 1px solid var(--border-1); border-radius: 14px; padding: 20px; margin-bottom: 14px; display: flex; justify-content: space-between; align-items: center; }
+    .session-user { display: flex; align-items: center; gap: 16px; }
+    .session-avatar { width: 50px; height: 50px; border-radius: 12px; background: var(--bg-5); border: 2px solid var(--border-2); }
+    .session-info h4 { font-weight: 600; margin-bottom: 4px; }
+    .session-info span { font-size: 0.75rem; color: var(--text-3); }
+    .session-meta { display: flex; gap: 20px; align-items: center; }
+    .risk-badge { padding: 6px 14px; border-radius: 8px; font-size: 0.65rem; font-weight: 800; text-transform: uppercase; }
+    .risk-low { background: rgba(16,185,129,0.15); color: var(--success); border: 1px solid rgba(16,185,129,0.3); }
+    .risk-medium { background: rgba(245,158,11,0.15); color: var(--warning); border: 1px solid rgba(245,158,11,0.3); }
+    .risk-high { background: rgba(239,68,68,0.15); color: var(--error); border: 1px solid rgba(239,68,68,0.3); }
+    .risk-critical { background: rgba(239,68,68,0.25); color: var(--error); border: 1px solid rgba(239,68,68,0.5); }
+    @media (max-width: 1200px) { .stats-grid { grid-template-columns: repeat(3, 1fr); } }
+    @media (max-width: 900px) { .stats-grid { grid-template-columns: repeat(2, 1fr); } .grid-2 { grid-template-columns: 1fr; } }
+  </style>
 </head>
 <body>
-  <!-- Your existing dashboard HTML -->
+  <div class="app">
+    <aside class="sidebar">
+      <div class="logo">
+        <div class="logo-icon">🛡️</div>
+        <div><div class="logo-text">Nova AI</div><div class="logo-sub">Dashboard</div></div>
+      </div>
+      <nav class="nav">
+        <div class="nav-section">
+          <div class="nav-label">Overview</div>
+          <div class="nav-item active" onclick="showTab('dashboard')"><span class="icon">📊</span><span>Dashboard</span></div>
+        </div>
+        <div class="nav-section">
+          <div class="nav-label">Modules</div>
+          <div class="nav-item" onclick="showTab('tickets')"><span class="icon">🎫</span><span>Tickets</span><span class="badge" id="ticketBadge">0</span></div>
+          <div class="nav-item" onclick="showTab('verification')"><span class="icon">🛡️</span><span>Verification</span><span class="badge" id="verifyBadge">0</span></div>
+        </div>
+        <div class="nav-section">
+          <div class="nav-label">System</div>
+                    <div class="nav-item" onclick="showTab('events')"><span class="icon">📡</span><span>Events</span></div>
+          <div class="nav-item" onclick="showTab('logs')"><span class="icon">📝</span><span>Logs</span></div>
+        </div>
+      </nav>
+      <div class="sidebar-footer">
+        <div class="status"><div class="status-dot"></div><span>System Online</span></div>
+      </div>
+    </aside>
+    <main class="main">
+      <header class="header">
+        <h1 id="pageTitle">Dashboard</h1>
+        <div class="header-stats">
+          <div class="header-stat"><div class="value" id="headerPing">0ms</div><div class="label">Latency</div></div>
+          <div class="header-stat"><div class="value" id="headerUptime">0h</div><div class="label">Uptime</div></div>
+        </div>
+      </header>
+      <div class="content">
+        <div class="tab-content active" id="tab-dashboard">
+          <div class="dashboard">
+            <div class="stats-grid">
+              <div class="stat-card"><div class="icon-wrap">🌐</div><div class="value" id="statServers">0</div><div class="label">Servers</div></div>
+              <div class="stat-card"><div class="icon-wrap">👥</div><div class="value" id="statUsers">0</div><div class="label">Users</div></div>
+              <div class="stat-card success"><div class="icon-wrap">✅</div><div class="value" id="statVerified">0</div><div class="label">Verified</div></div>
+              <div class="stat-card error"><div class="icon-wrap">🗑️</div><div class="value" id="statDeleted">0</div><div class="label">Deleted</div></div>
+              <div class="stat-card warning"><div class="icon-wrap">⚠️</div><div class="value" id="statWarnings">0</div><div class="label">Warnings</div></div>
+            </div>
+            <div class="grid-2">
+              <div class="card"><div class="card-header"><span>📡 Live Events</span></div><div class="card-body" id="eventsContainer"></div></div>
+              <div class="card"><div class="card-header"><span>🎫 Active Tickets</span><span id="ticketCount">0 open</span></div><div class="card-body" id="ticketsPreview"></div></div>
+            </div>
+          </div>
+        </div>
+        <div class="tab-content" id="tab-tickets">
+          <div class="tickets-container">
+            <div class="tickets-list">
+              <div class="tickets-header"><h2>🎫 Support Tickets</h2><div class="search-box"><input type="text" placeholder="Search..." id="ticketSearch" oninput="filterTickets()"></div></div>
+              <div class="tickets-scroll" id="ticketsList"></div>
+            </div>
+            <div class="chat-area">
+              <div class="empty-state" id="chatEmpty"><div class="empty-state-icon">💬</div><h3>No Ticket Selected</h3><p>Select a ticket to view</p></div>
+              <div id="chatView" style="display:none;flex:1;flex-direction:column;">
+                <div class="chat-header">
+                  <div class="chat-header-info"><img class="chat-header-avatar" id="chatAvatar"><div class="chat-header-text"><h3 id="chatTitle">Ticket</h3><span id="chatSubtitle">Loading...</span></div></div>
+                  <div class="chat-actions"><button class="btn btn-secondary" onclick="getAISuggestion()">🧠 AI Suggest</button><button class="btn btn-danger" onclick="closeCurrentTicket()">🔒 Close</button></div>
+                </div>
+                <div class="chat-messages" id="chatMessages"></div>
+                <div class="chat-input-area">
+                  <div class="ai-suggestion" id="aiSuggestion"><div class="ai-suggestion-header"><span class="ai-suggestion-label">🧠 AI Suggestion</span><button class="btn btn-secondary" style="padding:6px 12px;font-size:0.7rem" onclick="useSuggestion()">Use</button></div><div class="ai-suggestion-text" id="aiSuggestionText"></div></div>
+                  <div class="chat-input-row"><textarea class="chat-input" id="chatInput" placeholder="Type response..." rows="1"></textarea><button class="btn btn-primary" onclick="sendMessage()">Send →</button></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="tab-content" id="tab-verification">
+          <div class="verification-container"><div class="section-header"><h2>🛡️ Pending Verifications</h2></div><div id="sessionsList"></div></div>
+        </div>
+        <div class="tab-content" id="tab-events">
+          <div class="dashboard"><div class="section-header"><h2>📡 Server Events</h2></div><div class="card"><div class="card-body" id="allEvents" style="max-height:calc(100vh - 200px)"></div></div></div>
+        </div>
+        <div class="tab-content" id="tab-logs">
+          <div class="dashboard"><div class="section-header"><h2>📝 System Logs</h2></div><div class="card"><div class="card-body" id="allLogs" style="max-height:calc(100vh - 200px)"></div></div></div>
+        </div>
+      </div>
+    </main>
+  </div>
   <script src="/socket.io/socket.io.js"></script>
   <script>
-    // Your existing JavaScript
+    const socket = io();
+    let tickets = [], currentTicket = null, sessions = [], events = [], logs = [];
+
+    function showTab(name) {
+      document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+      document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+      document.getElementById('tab-' + name).classList.add('active');
+      event.target.closest('.nav-item').classList.add('active');
+      const titles = { dashboard: 'Dashboard', tickets: 'Support Tickets', verification: 'Verification', events: 'Server Events', logs: 'System Logs' };
+      document.getElementById('pageTitle').textContent = titles[name] || name;
+    }
+
+    socket.on('stats', s => {
+      document.getElementById('statServers').textContent = s.guilds || 0;
+      document.getElementById('statUsers').textContent = formatNum(s.users || 0);
+      document.getElementById('statVerified').textContent = s.verified || 0;
+      document.getElementById('statDeleted').textContent = s.messagesDeleted || 0;
+      document.getElementById('statWarnings').textContent = s.warningsGiven || 0;
+      document.getElementById('headerPing').textContent = (s.ping || 0) + 'ms';
+      document.getElementById('headerUptime').textContent = Math.floor((s.uptime || 0) / 3600000) + 'h';
+      document.getElementById('ticketBadge').textContent = s.openTickets || 0;
+      document.getElementById('ticketCount').textContent = (s.openTickets || 0) + ' open';
+      document.getElementById('verifyBadge').textContent = s.pendingSessions || 0;
+    });
+
+    socket.on('tickets', data => { tickets = data || []; renderTickets(); renderTicketsPreview(); });
+    socket.on('ticketMessage', data => { if (currentTicket?.id === data.ticketId) addMessageToChat(data.message); });
+    socket.on('sessions', data => { sessions = data || []; renderSessions(); });
+    socket.on('serverEvent', e => { events.unshift(e); if (events.length > 100) events.pop(); renderEvents(); });
+    socket.on('events', data => { events = data || []; renderEvents(); });
+    socket.on('newLog', l => { logs.unshift(l); if (logs.length > 100) logs.pop(); renderLogs(); });
+    socket.on('logs', data => { logs = data || []; renderLogs(); });
+    socket.on('aiSuggestion', data => { document.getElementById('aiSuggestionText').textContent = data.suggestion || 'No suggestion'; });
+
+    function renderTickets() {
+      const c = document.getElementById('ticketsList');
+      const search = (document.getElementById('ticketSearch').value || '').toLowerCase();
+      const filtered = tickets.filter(t => t.id.toLowerCase().includes(search) || (t.userName || '').toLowerCase().includes(search));
+      if (!filtered.length) { c.innerHTML = '<div class="empty-state" style="padding:40px"><div class="empty-state-icon">📭</div><p>No tickets</p></div>'; return; }
+      c.innerHTML = filtered.map(t => '<div class="ticket-card ' + (currentTicket?.id === t.id ? 'active' : '') + '" onclick="selectTicket(\\'' + t.id + '\\')"><div class="ticket-top"><span class="ticket-id">' + t.id + '</span><span class="ticket-badge">' + (t.category || 'general') + '</span></div><div class="ticket-user"><img class="ticket-avatar" src="' + (t.userAvatar || 'https://cdn.discordapp.com/embed/avatars/0.png') + '"><span class="ticket-username">' + (t.userName || 'Unknown') + '</span></div><div class="ticket-preview">' + (t.lastMessage?.content || t.reason || 'No messages') + '</div><div class="ticket-meta"><span>💬 ' + (t.messageCount || 0) + '</span><span>' + timeAgo(t.createdAt) + '</span></div></div>').join('');
+    }
+
+    function renderTicketsPreview() {
+      const c = document.getElementById('ticketsPreview');
+      if (!tickets.length) { c.innerHTML = '<div class="empty-state" style="padding:30px"><p>No active tickets</p></div>'; return; }
+      c.innerHTML = tickets.slice(0, 5).map(t => '<div class="event-item ticket" style="cursor:pointer" onclick="showTab(\\\'tickets\\\');setTimeout(()=>selectTicket(\\'' + t.id + '\\'),100)"><div class="event-title">' + t.id + '</div><div class="event-desc">' + (t.userName || 'Unknown') + ': ' + (t.reason || '').substring(0, 50) + '</div><div class="event-time">' + timeAgo(t.createdAt) + '</div></div>').join('');
+    }
+
+    function selectTicket(id) {
+      currentTicket = tickets.find(t => t.id === id);
+      if (!currentTicket) return;
+      document.getElementById('chatEmpty').style.display = 'none';
+      document.getElementById('chatView').style.display = 'flex';
+      document.getElementById('chatAvatar').src = currentTicket.userAvatar || 'https://cdn.discordapp.com/embed/avatars/0.png';
+      document.getElementById('chatTitle').textContent = currentTicket.id;
+      document.getElementById('chatSubtitle').textContent = (currentTicket.userName || 'Unknown') + ' • ' + (currentTicket.category || 'general');
+      renderMessages();
+      renderTickets();
+      document.getElementById('aiSuggestion').classList.remove('show');
+    }
+
+    function renderMessages() {
+      if (!currentTicket) return;
+      const c = document.getElementById('chatMessages');
+      const msgs = currentTicket.messages || [];
+      if (!msgs.length) { c.innerHTML = '<div class="empty-state"><p>No messages</p></div>'; return; }
+      c.innerHTML = msgs.map(m => '<div class="message ' + (m.isStaff ? 'staff' : '') + '"><img class="message-avatar" src="' + (m.authorAvatar || 'https://cdn.discordapp.com/embed/avatars/0.png') + '"><div class="message-content"><div class="message-author">' + (m.author || 'Unknown') + '</div><div class="message-text">' + escapeHtml(m.content || '') + '</div><div class="message-time">' + formatTime(m.timestamp) + '</div></div></div>').join('');
+      c.scrollTop = c.scrollHeight;
+    }
+
+    function addMessageToChat(m) {
+      const c = document.getElementById('chatMessages');
+      const d = document.createElement('div');
+      d.className = 'message ' + (m.isStaff ? 'staff' : '');
+      d.innerHTML = '<img class="message-avatar" src="' + (m.authorAvatar || 'https://cdn.discordapp.com/embed/avatars/0.png') + '"><div class="message-content"><div class="message-author">' + (m.author || 'Unknown') + '</div><div class="message-text">' + escapeHtml(m.content || '') + '</div><div class="message-time">' + formatTime(m.timestamp) + '</div></div>';
+      c.appendChild(d);
+      c.scrollTop = c.scrollHeight;
+    }
+
+    function sendMessage() {
+      if (!currentTicket) return;
+      const input = document.getElementById('chatInput');
+      const content = input.value.trim();
+      if (!content) return;
+      socket.emit('sendMessage', { ticketId: currentTicket.id, content, staffName: 'Dashboard Admin' });
+      input.value = '';
+      document.getElementById('aiSuggestion').classList.remove('show');
+    }
+
+    function getAISuggestion() {
+      if (!currentTicket) return;
+      document.getElementById('aiSuggestionText').textContent = 'Thinking...';
+      document.getElementById('aiSuggestion').classList.add('show');
+      socket.emit('getAISuggestion', { ticketId: currentTicket.id });
+    }
+
+    function useSuggestion() {
+      const s = document.getElementById('aiSuggestionText').textContent;
+      if (s && s !== 'Thinking...' && s !== 'No suggestion') {
+        document.getElementById('chatInput').value = s;
+        document.getElementById('aiSuggestion').classList.remove('show');
+      }
+    }
+
+    function closeCurrentTicket() {
+      if (!currentTicket || !confirm('Close this ticket?')) return;
+      socket.emit('closeTicket', { ticketId: currentTicket.id });
+      currentTicket = null;
+      document.getElementById('chatEmpty').style.display = 'flex';
+      document.getElementById('chatView').style.display = 'none';
+    }
+
+    function filterTickets() { renderTickets(); }
+
+    function renderSessions() {
+      const c = document.getElementById('sessionsList');
+      if (!sessions.length) { c.innerHTML = '<div class="empty-state" style="padding:60px"><div class="empty-state-icon">✅</div><h3>All Clear</h3><p>No pending verifications</p></div>'; return; }
+      c.innerHTML = sessions.map(s => '<div class="session-card"><div class="session-user"><img class="session-avatar" src="' + (s.avatar || 'https://cdn.discordapp.com/embed/avatars/0.png') + '"><div class="session-info"><h4>' + (s.username || 'Unknown') + '</h4><span>Progress: ' + (s.currentIndex || 0) + '/' + (s.totalChallenges || 1) + ' • Attempts: ' + (s.attempts || 0) + '</span></div></div><div class="session-meta"><span class="risk-badge risk-' + (s.riskLevel || 'low') + '">' + (s.riskLevel || 'low').toUpperCase() + ' (' + (s.score || 0) + ')</span><span style="color:var(--text-3);font-size:0.75rem">' + timeAgo(s.startedAt) + '</span></div></div>').join('');
+    }
+
+    function renderEvents() {
+      [document.getElementById('eventsContainer'), document.getElementById('allEvents')].forEach((c, i) => {
+        if (!c) return;
+        const limit = i === 0 ? 10 : 100;
+        if (!events.length) { c.innerHTML = '<div class="empty-state" style="padding:30px"><p>No events</p></div>'; return; }
+        c.innerHTML = events.slice(0, limit).map(e => '<div class="event-item ' + (e.type || 'info') + '"><div class="event-title">' + (e.title || 'Event') + '</div><div class="event-desc">' + (e.description || '') + '</div><div class="event-time">' + formatTime(e.timestamp) + '</div></div>').join('');
+      });
+    }
+
+    function renderLogs() {
+      const c = document.getElementById('allLogs');
+      if (!c) return;
+      if (!logs.length) { c.innerHTML = '<div class="empty-state" style="padding:30px"><p>No logs</p></div>'; return; }
+      c.innerHTML = logs.slice(0, 100).map(l => '<div class="event-item ' + (l.type || 'info') + '"><strong>' + formatTime(l.timestamp) + '</strong> ' + (l.message || '') + '</div>').join('');
+    }
+
+    function escapeHtml(t) { const d = document.createElement('div'); d.textContent = t; return d.innerHTML; }
+    function formatTime(ts) { if (!ts) return ''; return new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }); }
+    function timeAgo(ts) { if (!ts) return ''; const s = Math.floor((Date.now() - new Date(ts)) / 1000); if (s < 60) return 'Just now'; if (s < 3600) return Math.floor(s / 60) + 'm ago'; if (s < 86400) return Math.floor(s / 3600) + 'h ago'; return Math.floor(s / 86400) + 'd ago'; }
+    function formatNum(n) { if (n >= 1000000) return (n / 1000000).toFixed(1) + 'M'; if (n >= 1000) return (n / 1000).toFixed(1) + 'K'; return n.toString(); }
+
+    document.getElementById('chatInput').addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); } });
+    document.getElementById('chatInput').addEventListener('input', function() { this.style.height = 'auto'; this.style.height = Math.min(this.scrollHeight, 120) + 'px'; });
+
+    renderEvents(); renderLogs();
   </script>
 </body>
 </html>`;
 }
-
-// ╔═══════════════════════════════════════════════════════════════════════════════════════╗
-// ║                                    START SERVER                                         ║
-// ╚═══════════════════════════════════════════════════════════════════════════════════════╝
 
 const PORT = process.env.PORT || 3000;
 
@@ -1500,7 +1665,7 @@ server.listen(PORT, '0.0.0.0', async () => {
   console.log('║   🛡️  NOVA ULTRA AI - Advanced Discord Protection System    ║');
   console.log('║                                                              ║');
   console.log('╠══════════════════════════════════════════════════════════════╣');
-  console.log(`║   🌐 Dashboard:     http://localhost:${PORT}                    ║`);
+  console.log('║   🌐 Dashboard:     http://localhost:' + PORT + '                    ║');
   console.log('║   🎫 Tickets:       !ticket [reason]                         ║');
   console.log('║   🛡️ Verification:  Automatic on member join                 ║');
   console.log('║   🧪 Test:          !testvf                                  ║');
