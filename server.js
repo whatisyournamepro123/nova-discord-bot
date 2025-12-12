@@ -1031,7 +1031,7 @@ class NovaBot {
         modEnabled: true, detectSpam: true, detectToxicity: true, detectInvites: true,
         autoDelete: true, autoWarn: true, autoMute: true, maxWarnings: 3, muteDuration: 10,
         verifyEnabled: true, channelId: null, verifiedRoleId: null, unverifiedRoleId: null,
-        kickOnFail: true, maxAttempts: 3
+        kickOnFail: true, maxAttempts: 3, modLogChannel: null
       });
     }
     return this.settings.get(guildId);
@@ -1142,27 +1142,62 @@ class NovaBot {
             if ((result.action === 'warn' || result.action === 'delete_warn') && settings.autoWarn) {
               const profile = this.ai.getUserProfile(msg.author.id);
               
+              // 🎨 BEAUTIFUL EMBED DESIGN
               const embed = new EmbedBuilder()
-                .setColor(result.severity === 'critical' ? '#ff0000' : result.severity === 'high' ? '#ff6600' : '#ffaa00')
-                .setAuthor({ name: '🛡️ Nova AI Moderation', iconURL: this.client.user.displayAvatarURL() })
-                .setDescription(`${result.suggestedResponse}`)
+                .setColor(result.severity === 'critical' ? '#FF0000' : result.severity === 'high' ? '#FF4500' : '#FFD700')
+                .setAuthor({ name: '🛡️ Nova Guardian System', iconURL: this.client.user.displayAvatarURL(), url: 'https://discord.gg/nova' })
+                .setDescription(`### ⚠️ Action Taken: ${result.action === 'delete_warn' ? 'Message Removed' : 'Warning Issued'}\n\n${result.suggestedResponse}`)
                 .addFields(
-                  { name: '📊 Confidence', value: `${result.confidence}%`, inline: true },
-                  { name: '⚠️ Severity', value: result.severity.toUpperCase(), inline: true },
-                  { name: '📝 Warnings', value: `${profile?.warnings || 1}/${settings.maxWarnings}`, inline: true }
+                  { name: '👤 User', value: `${msg.author} (\`${msg.author.id}\`)`, inline: true },
+                  { name: '⚖️ Reason', value: `\`${result.reason}\``, inline: true },
+                  { name: '📊 Risk Level', value: `\`${result.severity.toUpperCase()}\` (${result.confidence}%)`, inline: true },
+                  { name: '🔢 Warnings', value: `\`${profile?.warnings || 1}/${settings.maxWarnings}\``, inline: true },
+                  { name: '🧠 AI Analysis', value: `*${result.thinking?.intent ? `Detected intent: ${result.thinking.intent}` : 'Pattern matched violation'}*`, inline: false }
                 )
-                .setFooter({ text: result.thinking?.intent ? `Detected intent: ${result.thinking.intent}` : 'AI-Powered Moderation' })
+                .setThumbnail(msg.author.displayAvatarURL({ dynamic: true }))
+                .setFooter({ text: `Nova AI • Case #${Date.now().toString().slice(-6)} • Protected by Groq`, iconURL: 'https://groq.com/favicon.ico' })
                 .setTimestamp();
 
+              // Send Public Warning
               const warning = await msg.channel.send({ content: `${msg.author}`, embeds: [embed] });
-              setTimeout(() => warning.delete().catch(() => {}), 15000);
+              
+              // DM the user detailed info
+              try {
+                const dmEmbed = new EmbedBuilder()
+                  .setColor('#FF0000')
+                  .setTitle('🛡️ Moderation Alert')
+                  .setDescription(`You received a warning in **${msg.guild.name}**.`)
+                  .addFields(
+                    { name: '📝 Your Message', value: `\`\`\`${msg.content.substring(0, 900)}\`\`\`` },
+                    { name: '⚠️ Reason', value: result.reason },
+                    { name: '🔨 Action', value: result.action === 'delete_warn' ? 'Message Deleted & Warned' : 'Warned' }
+                  )
+                  .setFooter({ text: 'Please review the server rules.' })
+                  .setTimestamp();
+                await msg.author.send({ embeds: [dmEmbed] }).catch(() => {});
+              } catch (e) {}
+
+              setTimeout(() => warning.delete().catch(() => {}), 20000); // Delete after 20s
               
               this.stats.warningsGiven++;
               this.log(`⚠️ Warned ${msg.author.tag}: ${result.reason} (${result.confidence}% confidence)`, 'moderation');
               this.addEvent('AI Moderation', `${msg.author.tag}: ${result.reason}`, 'moderation');
 
+              // Log to Mod Channel if set
+              if (settings.modLogChannel) {
+                const modChannel = msg.guild.channels.cache.get(settings.modLogChannel);
+                if (modChannel) modChannel.send({ embeds: [embed] }).catch(() => {});
+              }
+
               // Auto-mute on max warnings
               if (settings.autoMute && profile?.warnings >= settings.maxWarnings) {
+                const muteEmbed = new EmbedBuilder()
+                  .setColor('#000000')
+                  .setTitle('🔇 Automatic Mute')
+                  .setDescription(`${msg.author} has been muted for exceeding warning limits.`)
+                  .addFields({ name: 'Duration', value: `${settings.muteDuration} minutes` });
+                
+                await msg.channel.send({ embeds: [muteEmbed] });
                 await msg.member.timeout(settings.muteDuration * 60 * 1000, 'Max warnings reached');
                 this.stats.mutesDone++;
                 this.log(`🔇 Muted ${msg.author.tag} for ${settings.muteDuration}m`, 'moderation');
@@ -1204,6 +1239,15 @@ class NovaBot {
         const ch = msg.mentions.channels.first();
         if (ch) { this.getSettings(msg.guild.id).channelId = ch.id; msg.reply({ embeds: [new EmbedBuilder().setColor('#ffffff').setDescription(`✅ Verification channel: ${ch}`)] }); }
       }
+      else if (content.startsWith('!setmodlog') && isAdmin) {
+        const ch = msg.mentions.channels.first();
+        if (ch) { 
+          this.getSettings(msg.guild.id).modLogChannel = ch.id; 
+          msg.reply({ embeds: [new EmbedBuilder().setColor('#57F287').setDescription(`✅ Moderation logs will be sent to: ${ch}`)] }); 
+        } else {
+          msg.reply({ content: 'Please mention a channel! Usage: `!setmodlog #channel`' });
+        }
+      }
       else if (content.startsWith('!setrole') && isAdmin) {
         const role = msg.mentions.roles.first();
         if (role) { this.getSettings(msg.guild.id).verifiedRoleId = role.id; msg.reply({ embeds: [new EmbedBuilder().setColor('#ffffff').setDescription(`✅ Verified role: ${role}`)] }); }
@@ -1214,6 +1258,24 @@ class NovaBot {
       }
       else if (content === '!testvf' && isAdmin) await this.testVerify(msg);
       else if (content === '!thinking' && isAdmin) await this.showThinkingLogs(msg);
+      else if (content === '!stats' && isAdmin) {
+        const embed = new EmbedBuilder()
+          .setColor('#0099ff')
+          .setTitle('📊 Nova AI Statistics')
+          .addFields(
+            { name: '👁️ Scanned', value: `${this.stats.messagesScanned}`, inline: true },
+            { name: '🧠 Detections', value: `${this.stats.aiDetections}`, inline: true },
+            { name: '⚠️ Warnings', value: `${this.stats.warningsGiven}`, inline: true },
+            { name: '🗑️ Deleted', value: `${this.stats.messagesDeleted}`, inline: true },
+            { name: '🔇 Mutes', value: `${this.stats.mutesDone}`, inline: true },
+            { name: '🚫 Bans', value: `${this.stats.banned}`, inline: true },
+            { name: '✅ Verified', value: `${this.stats.verified}`, inline: true },
+            { name: '🎫 Tickets', value: `${this.stats.ticketsCreated}`, inline: true }
+          )
+          .setFooter({ text: 'Nova System Stats' })
+          .setTimestamp();
+        msg.reply({ embeds: [embed] });
+      }
       else if (msg.mentions.has(this.client.user)) {
         const response = await this.ai.chat(msg.content.replace(/<@!?\d+>/g, '').trim(), msg.author.username);
         msg.reply(response);
