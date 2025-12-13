@@ -337,7 +337,7 @@ class NovaThinkingEngine {
     // Get or create user profile
     if (!this.userMemory.has(userId)) {
       this.userMemory.set(userId, {
-        oderId: oderId,
+        userId: userId,
         username: member.user.tag,
         avatar: member.user.displayAvatarURL(),
         accountAge: now - member.user.createdTimestamp,
