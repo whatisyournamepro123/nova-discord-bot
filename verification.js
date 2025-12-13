@@ -268,9 +268,9 @@ Analyze and respond in JSON ONLY:
         }
 
         return {
-            oderId: user.id,
-            oderId: user.tag,
-            oderId: user.displayAvatarURL(),
+            userId: user.id,
+            username: user.tag,
+            avatar: user.displayAvatarURL(),
             ...analysis,
             threatScore,
             riskLevel,

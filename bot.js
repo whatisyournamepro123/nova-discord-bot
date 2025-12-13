@@ -192,9 +192,9 @@ class DiscordBot {
     }
 
     async handleVerificationInteraction(interaction) {
-        const [, oderId, answerIndex] = interaction.customId.split('_');
+        const [, userId, answerIndex] = interaction.customId.split('_');
 
-        if (interaction.user.id !== oderId) {
+        if (interaction.user.id !== userId) {
             return interaction.reply({ content: '❌ This verification is not for you!', ephemeral: true });
         }
 
