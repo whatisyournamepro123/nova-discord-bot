@@ -31,9 +31,26 @@ class NovaUltraAI {
     this.moderationHistory = [];
     this.appealHistory = [];
     
+    // ═══════════════════════════════════════════════════════════════════════════
+    // BAD WORDS LIST (catches stretched versions like fuuuck, fuckk, f.u.c.k)
+    // ═══════════════════════════════════════════════════════════════════════════
+    this.badWordBases = [
+      'fuck', 'shit', 'bitch', 'asshole', 'dick', 'cock', 'cunt', 'bastard',
+      'whore', 'slut', 'piss', 'damn', 'crap', 'stfu', 'wtf', 'fck', 'sht'
+    ];
+    
+    this.slurBases = [
+      'nigger', 'nigga', 'faggot', 'fag', 'retard', 'retarded', 'spic', 
+      'chink', 'kike', 'tranny', 'dyke', 'coon', 'wetback', 'beaner'
+    ];
+    
+    this.selfHarmPhrases = [
+      'kys', 'kill yourself', 'kill urself', 'kill ur self', 'end yourself'
+    ];
+    
     console.log(this.groqKey 
       ? '🧠 Nova Ultra AI Engine: ONLINE [Full AI Mode]' 
-      : '⚠️ Nova Ultra AI Engine: LIMITED [No API Key]');
+      : '⚠️ Nova Ultra AI Engine: LIMITED [Pattern Only Mode - No API Key]');
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -43,7 +60,6 @@ class NovaUltraAI {
   async callAI(systemPrompt, userPrompt, options = {}) {
     if (!this.groqKey) return null;
     
-    // Rate limiting
     const elapsed = Date.now() - this.lastRequest;
     if (elapsed < this.minInterval) {
       await new Promise(r => setTimeout(r, this.minInterval - elapsed));
@@ -107,6 +123,7 @@ class NovaUltraAI {
     if (!this.userProfiles.has(userId)) {
       this.userProfiles.set(userId, {
         id: userId,
+        oderId: userId,
         userId: userId,
         trustScore: 50,
         warnings: [],
@@ -130,7 +147,66 @@ class NovaUltraAI {
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
-  // ULTRA ADVANCED CONTEXT-AWARE MODERATION
+  // TEXT NORMALIZATION (catches fuckk, f.u.c.k, fuuuck, f@ck, etc)
+  // ═══════════════════════════════════════════════════════════════════════════
+  
+  normalize(text) {
+    if (!text) return '';
+    
+    let s = text
+      .normalize('NFKD')
+      .replace(/[\u0300-\u036f]/g, '')      // Remove diacritics
+      .replace(/[\u200B-\u200D\uFEFF]/g, '') // Remove zero-width chars
+      .toLowerCase();
+    
+    // Remove separators: f.u.c.k, f-u-c-k, f_u_c_k, f u c k
+    s = s.replace(/[\.\-_\*\|\s]+/g, '');
+    
+    // Leetspeak conversion
+    s = s.replace(/[@4]/g, 'a');
+    s = s.replace(/[0]/g, 'o');
+    s = s.replace(/[1!|]/g, 'i');
+    s = s.replace(/[3]/g, 'e');
+    s = s.replace(/[5$]/g, 's');
+    s = s.replace(/[7+]/g, 't');
+    s = s.replace(/[8]/g, 'b');
+    
+    // Collapse repeated letters: fuuuuck -> fuck, shiiit -> shit
+    s = s.replace(/(.)\1{2,}/g, '$1$1'); // fuuuck -> fuuck
+    s = s.replace(/(.)\1+/g, '$1');       // fuuck -> fuck
+    
+    return s;
+  }
+  
+  // Check if text contains bad word
+  containsBadWord(text) {
+    const norm = this.normalize(text);
+    const found = [];
+    
+    for (const word of this.badWordBases) {
+      if (norm.includes(word)) {
+        found.push({ word, type: 'profanity', severity: 5 });
+      }
+    }
+    
+    for (const word of this.slurBases) {
+      if (norm.includes(word)) {
+        found.push({ word, type: 'slur', severity: 10 });
+      }
+    }
+    
+    const lower = text.toLowerCase();
+    for (const phrase of this.selfHarmPhrases) {
+      if (lower.includes(phrase)) {
+        found.push({ word: phrase, type: 'self_harm', severity: 9 });
+      }
+    }
+    
+    return found;
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // MAIN ANALYSIS FUNCTION
   // ═══════════════════════════════════════════════════════════════════════════
   
   async analyzeMessage(message, recentMessages = []) {
@@ -138,50 +214,220 @@ class NovaUltraAI {
     const userId = message.author.id;
     const profile = this.getProfile(userId);
     
-    // Update profile
     profile.messageCount++;
     profile.lastSeen = Date.now();
     
-    // Quick checks first
-    const quickResult = this.quickAnalysis(content, message);
-    if (quickResult.dominated) return quickResult;
+    console.log(`[MODERATION] Analyzing: "${content.slice(0, 50)}..." from ${message.author.tag}`);
     
-    // Build context for AI
-    const context = {
-      message: content,
-      channelName: message.channel?.name || 'unknown',
-      channelType: this.getChannelContext(message.channel?.name),
-      userTrustScore: profile.trustScore,
-      userWarningCount: profile.warnings.length,
-      userMessageCount: profile.messageCount,
-      recentChannelMessages: recentMessages.slice(-5).map(m => ({
-        author: m.author?.username || 'unknown',
-        content: (m.content || '').slice(0, 100)
-      })),
-      isNewUser: profile.messageCount < 10,
-      serverType: 'gaming'
-    };
+    // ─────────────────────────────────────────────────────────────────
+    // STEP 1: Pattern Detection (ALWAYS runs first)
+    // ─────────────────────────────────────────────────────────────────
+    const foundBadWords = this.containsBadWord(content);
     
-    // AI Analysis
-    const aiResult = await this.aiModerateDecision(content, context);
-    
-    if (aiResult) {
-      // Update user toxicity average
-      if (aiResult.scores?.toxicity) {
-        const oldAvg = profile.toxicityAvg;
-        const count = profile.messageCount;
-        profile.toxicityAvg = ((oldAvg * (count - 1)) + aiResult.scores.toxicity) / count;
+    if (foundBadWords.length > 0) {
+      console.log(`[MODERATION] Pattern detected: ${foundBadWords.map(w => w.word).join(', ')}`);
+      
+      // Find worst violation
+      const worst = foundBadWords.reduce((a, b) => a.severity > b.severity ? a : b);
+      
+      // Slurs = instant ban (no AI override)
+      if (worst.type === 'slur') {
+        console.log(`[MODERATION] SLUR DETECTED - Instant ban`);
+        return {
+          shouldAct: true,
+          action: 'ban',
+          severity: 10,
+          category: 'slur',
+          reason: `Slur detected: ${worst.word}`,
+          confidence: 0.99,
+          source: 'pattern',
+          userProfile: profile,
+          detectedWords: foundBadWords.map(w => w.word)
+        };
       }
       
+      // Self-harm = instant timeout (no AI override)
+      if (worst.type === 'self_harm') {
+        console.log(`[MODERATION] SELF-HARM DETECTED - Timeout`);
+        return {
+          shouldAct: true,
+          action: 'timeout',
+          severity: 9,
+          category: 'self_harm',
+          reason: `Self-harm encouragement: ${worst.word}`,
+          confidence: 0.95,
+          source: 'pattern',
+          userProfile: profile,
+          detectedWords: foundBadWords.map(w => w.word)
+        };
+      }
+      
+      // ─────────────────────────────────────────────────────────────────
+      // STEP 2: For profanity, check with AI for context (if available)
+      // ─────────────────────────────────────────────────────────────────
+      if (this.groqKey) {
+        console.log(`[MODERATION] Profanity found, checking AI for context...`);
+        
+        const context = {
+          message: content,
+          detectedWords: foundBadWords.map(w => w.word),
+          channelName: message.channel?.name || 'unknown',
+          channelType: this.getChannelContext(message.channel?.name),
+          userTrustScore: profile.trustScore,
+          userWarningCount: profile.warnings.length,
+          recentMessages: recentMessages.slice(-3).map(m => ({
+            author: m.author?.username || 'unknown',
+            content: (m.content || '').slice(0, 80)
+          }))
+        };
+        
+        const aiResult = await this.aiContextCheck(content, context);
+        
+        if (aiResult) {
+          console.log(`[MODERATION] AI says: shouldAct=${aiResult.shouldAct}, action=${aiResult.action}, reason=${aiResult.reason}`);
+          
+          // AI can say "allow" only if it's VERY confident it's safe (gaming context, etc)
+          if (!aiResult.shouldAct && aiResult.confidence >= 0.8) {
+            console.log(`[MODERATION] AI override: Allowing (confidence ${aiResult.confidence})`);
+            return {
+              shouldAct: false,
+              action: 'allow',
+              severity: 0,
+              category: 'safe',
+              reason: aiResult.reason || 'AI determined safe in context',
+              confidence: aiResult.confidence,
+              source: 'ai_override',
+              userProfile: profile
+            };
+          }
+          
+          // AI confirms it's bad or is unsure - take action
+          return {
+            shouldAct: true,
+            action: aiResult.action || 'delete',
+            severity: aiResult.severity || 5,
+            category: aiResult.category || 'profanity',
+            reason: aiResult.reason || 'Profanity detected',
+            confidence: aiResult.confidence || 0.8,
+            source: 'ai',
+            userProfile: profile,
+            detectedWords: foundBadWords.map(w => w.word),
+            intent: aiResult.intent,
+            sentiment: aiResult.sentiment
+          };
+        }
+      }
+      
+      // No AI or AI failed - use pattern result
+      console.log(`[MODERATION] Using pattern result: delete + warn`);
       return {
-        ...aiResult,
+        shouldAct: true,
+        action: 'delete',
+        severity: 5,
+        category: 'profanity',
+        reason: `Profanity detected: ${foundBadWords.map(w => w.word).join(', ')}`,
+        confidence: 0.9,
+        source: 'pattern',
         userProfile: profile,
-        source: 'ai'
+        detectedWords: foundBadWords.map(w => w.word)
       };
     }
     
-    // Fallback to pattern-based
-    return this.patternAnalysis(content, profile);
+    // ─────────────────────────────────────────────────────────────────
+    // STEP 3: No bad words found by pattern - check other things
+    // ─────────────────────────────────────────────────────────────────
+    
+    // Mass mentions
+    const mentionCount = (message.mentions?.users?.size || 0) + 
+                         (message.mentions?.roles?.size || 0) +
+                         (message.mentions?.everyone ? 10 : 0);
+    
+    if (mentionCount > 5) {
+      console.log(`[MODERATION] Mass mentions detected: ${mentionCount}`);
+      return {
+        shouldAct: true,
+        action: 'timeout',
+        severity: 7,
+        category: 'spam',
+        reason: `Mass mentions: ${mentionCount} mentions`,
+        confidence: 0.95,
+        source: 'pattern',
+        userProfile: profile
+      };
+    }
+    
+    // Discord invites
+    if (/(discord\.(gg|io|me|li)\/\S+|discord(app)?\.com\/invite\/\S+)/i.test(content)) {
+      console.log(`[MODERATION] Discord invite detected`);
+      return {
+        shouldAct: true,
+        action: 'delete',
+        severity: 4,
+        category: 'invite',
+        reason: 'Unauthorized Discord invite',
+        confidence: 0.95,
+        source: 'pattern',
+        userProfile: profile
+      };
+    }
+    
+    // Excessive caps (80%+ caps, 15+ letters)
+    const letters = content.replace(/[^a-zA-Z]/g, '');
+    const upperCount = (content.match(/[A-Z]/g) || []).length;
+    if (letters.length >= 15 && upperCount / letters.length > 0.8) {
+      console.log(`[MODERATION] Excessive caps detected`);
+      return {
+        shouldAct: true,
+        action: 'warn',
+        severity: 2,
+        category: 'caps',
+        reason: 'Excessive caps usage',
+        confidence: 0.9,
+        source: 'pattern',
+        userProfile: profile
+      };
+    }
+    
+    // ─────────────────────────────────────────────────────────────────
+    // STEP 4: Run full AI analysis for subtle toxicity (if available)
+    // ─────────────────────────────────────────────────────────────────
+    if (this.groqKey && content.length > 10) {
+      const context = {
+        message: content,
+        channelName: message.channel?.name || 'unknown',
+        channelType: this.getChannelContext(message.channel?.name),
+        userTrustScore: profile.trustScore,
+        userWarningCount: profile.warnings.length,
+        recentMessages: recentMessages.slice(-3).map(m => ({
+          author: m.author?.username || 'unknown',
+          content: (m.content || '').slice(0, 80)
+        }))
+      };
+      
+      const aiResult = await this.aiFullAnalysis(content, context);
+      
+      if (aiResult && aiResult.shouldAct) {
+        console.log(`[MODERATION] AI detected: ${aiResult.category} - ${aiResult.reason}`);
+        return {
+          ...aiResult,
+          userProfile: profile,
+          source: 'ai'
+        };
+      }
+    }
+    
+    // Nothing detected
+    console.log(`[MODERATION] Message is clean`);
+    return {
+      shouldAct: false,
+      action: 'allow',
+      severity: 0,
+      category: 'safe',
+      reason: 'No issues detected',
+      confidence: 1,
+      source: 'none',
+      userProfile: profile
+    };
   }
   
   getChannelContext(channelName) {
@@ -191,166 +437,57 @@ class NovaUltraAI {
     if (name.includes('meme') || name.includes('funny') || name.includes('shitpost')) return 'memes';
     if (name.includes('support') || name.includes('help') || name.includes('ticket')) return 'support';
     if (name.includes('nsfw') || name.includes('adult')) return 'nsfw';
-    if (name.includes('art') || name.includes('creative')) return 'creative';
     return 'general';
   }
   
-  quickAnalysis(content, message) {
-    // Instant bans - slurs (no context needed)
-    const slurs = /\b(n+[i1]+g+[gq]+[e3]*[r]*s?|f+[a@]+g+[gq]*[o0]*t*s?|r+[e3]+t+[a@]+r+d+s?)\b/gi;
-    if (slurs.test(this.normalize(content))) {
-      return {
-        shouldAct: true,
-        action: 'ban',
-        severity: 10,
-        category: 'slur',
-        reason: 'Racial/homophobic slur detected',
-        confidence: 0.99,
-        source: 'instant',
-        dominated: true
-      };
-    }
-    
-    // Self-harm - always act
-    if (/\b(k+y+s+|kill\s*(your|ur)\s*self)\b/gi.test(content)) {
-      return {
-        shouldAct: true,
-        action: 'timeout',
-        severity: 9,
-        category: 'self_harm',
-        reason: 'Self-harm encouragement detected',
-        confidence: 0.95,
-        source: 'instant',
-        dominated: true
-      };
-    }
-    
-    return { dominated: false };
-  }
-  
-  normalize(text) {
-    return (text || '')
-      .normalize('NFKD')
-      .replace(/[\u0300-\u036f]/g, '')
-      .replace(/[\u200B-\u200D\uFEFF]/g, '')
-      .toLowerCase()
-      .replace(/[@4]/g, 'a')
-      .replace(/[0]/g, 'o')
-      .replace(/[1!|]/g, 'i')
-      .replace(/[3]/g, 'e')
-      .replace(/[5$]/g, 's')
-      .replace(/[7+]/g, 't')
-      .replace(/[\.\-_\*\s]+/g, '')
-      .replace(/(.)\1{2,}/g, '$1$1');
-  }
-  
-  async aiModerateDecision(content, context) {
-    const systemPrompt = `You are Nova, an ultra-intelligent Discord moderation AI.
+  // AI check specifically for context on detected profanity
+  async aiContextCheck(content, context) {
+    const systemPrompt = `You are a Discord moderation AI checking if profanity is acceptable in context.
 
-YOUR JOB: Analyze messages and decide the PERFECT action based on CONTEXT.
+DETECTED WORDS: ${context.detectedWords.join(', ')}
 
-CRITICAL RULES:
-1. CONTEXT MATTERS EVERYTHING:
-   - "fuck yeah I killed that boss!" in #gaming = SAFE (excitement)
-   - "fuck you idiot" in #general = TOXIC (harassment)
-   - "lmao get rekt noob" in #gaming = SAFE (friendly banter)
-   - "you're trash uninstall" with emojis = PROBABLY SAFE (joking)
-   - "you're trash uninstall" after argument = HARASSMENT
+RULES:
+- "fuck yeah!" or "holy shit!" as EXCITEMENT = might be OK in gaming/memes channels
+- "fuck you" or insults directed at users = NOT OK
+- Gaming context like "kill the boss" or "rekt that noob" = usually OK
+- If unsure, err on the side of moderation
 
-2. UNDERSTAND GAMING CULTURE:
-   - "kill", "destroy", "rekt", "noob", "trash" = often friendly
-   - Trash talk between friends is normal
-   - Check if it's directed AT someone vs talking ABOUT game
-
-3. DETECT REAL THREATS:
-   - Genuine harassment vs banter
-   - Personal attacks vs game criticism
-   - Doxxing, threats, targeted hate = SEVERE
-
-4. CONSIDER USER HISTORY:
-   - New user being toxic = more suspicious
-   - Trusted user slipping up = maybe warn only
-   - Repeat offender = escalate
-
-5. PROFANITY POLICY:
-   - Light swearing in context = usually OK
-   - Directed insults = warn/delete
-   - Excessive/aggressive = timeout
-
-RESPOND WITH JSON:
+Respond with JSON:
 {
   "shouldAct": boolean,
-  "action": "allow"|"note"|"warn"|"delete"|"timeout"|"kick"|"ban",
+  "action": "allow"|"warn"|"delete"|"timeout",
   "severity": 0-10,
-  "category": "safe"|"profanity"|"toxicity"|"harassment"|"hate"|"threat"|"spam"|"nsfw"|"scam",
+  "category": "safe"|"profanity"|"toxicity"|"harassment",
   "confidence": 0.0-1.0,
-  "reason": "detailed explanation of your decision",
-  "context_interpretation": "how you understood the context",
-  "scores": {
-    "toxicity": 0-1,
-    "harassment": 0-1,
-    "threat": 0-1,
-    "spam": 0-1
-  },
-  "sentiment": "positive"|"neutral"|"negative"|"hostile",
-  "intent": "friendly"|"joking"|"venting"|"arguing"|"attacking"|"unknown",
-  "recommendation_for_user": "optional message to tell the user"
-}
+  "reason": "brief explanation",
+  "intent": "excitement"|"frustration"|"insult"|"friendly"|"hostile"|"unknown"
+}`;
 
-SEVERITY GUIDE:
-0-2: Safe/Minor (allow or note)
-3-4: Low (warn)
-5-6: Medium (delete + warn)
-7-8: High (timeout 10-60 min)
-9-10: Critical (kick/ban)`;
-
-    const userPrompt = JSON.stringify(context, null, 2);
-    
-    return await this.callAI(systemPrompt, userPrompt, { json: true, maxTokens: 600 });
+    const userPrompt = JSON.stringify(context);
+    return await this.callAI(systemPrompt, userPrompt, { json: true, maxTokens: 200 });
   }
   
-  patternAnalysis(content, userProfile) {
-    const norm = this.normalize(content);
-    let severity = 0;
-    let category = 'safe';
-    let reason = '';
-    
-    // Profanity check
-    const profanity = /(fuck|shit|bitch|ass|dick|cunt|bastard|damn)/i;
-    if (profanity.test(norm)) {
-      severity = 3;
-      category = 'profanity';
-      reason = 'Profanity detected';
-    }
-    
-    // Aggression check
-    const aggressive = /(stupid|idiot|dumb|moron|loser|pathetic)/i;
-    if (aggressive.test(norm) && profanity.test(norm)) {
-      severity = 5;
-      category = 'toxicity';
-      reason = 'Aggressive language with profanity';
-    }
-    
-    // Trust-based adjustment
-    if (userProfile.trustScore < 30) {
-      severity += 1;
-      reason += ' (Low trust user)';
-    } else if (userProfile.trustScore > 70) {
-      severity = Math.max(0, severity - 1);
-    }
-    
-    const actions = ['allow', 'allow', 'note', 'warn', 'warn', 'delete', 'delete', 'timeout', 'timeout', 'kick', 'ban'];
-    
-    return {
-      shouldAct: severity >= 3,
-      action: actions[severity] || 'allow',
-      severity,
-      category,
-      reason: reason || 'No issues detected',
-      confidence: 0.7,
-      source: 'pattern',
-      userProfile
-    };
+  // Full AI analysis for subtle toxicity
+  async aiFullAnalysis(content, context) {
+    const systemPrompt = `You are Nova, a Discord moderation AI. Analyze this message for toxicity, harassment, hate, threats, or spam.
+
+Be strict but fair. Consider context.
+
+Respond with JSON:
+{
+  "shouldAct": boolean,
+  "action": "allow"|"warn"|"delete"|"timeout"|"ban",
+  "severity": 0-10,
+  "category": "safe"|"toxicity"|"harassment"|"hate"|"threat"|"spam"|"scam",
+  "confidence": 0.0-1.0,
+  "reason": "explanation",
+  "sentiment": "positive"|"neutral"|"negative"|"hostile"
+}
+
+SEVERITY: 0-2=safe, 3-4=warn, 5-6=delete, 7-8=timeout, 9-10=ban`;
+
+    const userPrompt = JSON.stringify(context);
+    return await this.callAI(systemPrompt, userPrompt, { json: true, maxTokens: 250 });
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -375,8 +512,7 @@ SEVERITY GUIDE:
     const result = await this.callAI(
       `You are a helpful support agent for a Discord server. 
       Category: ${category}
-      Generate a helpful, friendly response. Be concise but thorough.
-      If you need more info, ask specific questions.`,
+      Generate a helpful, friendly response. Be concise but thorough.`,
       `Conversation:\n${conversation}\n\nSuggest a response:`,
       { maxTokens: 300, temperature: 0.7 }
     );
@@ -399,10 +535,8 @@ SEVERITY GUIDE:
   
   async generateWelcomeMessage(user, serverName) {
     const result = await this.callAI(
-      `Generate a friendly, personalized welcome message for a new Discord server member.
-      Server: ${serverName}
-      Be warm, include emojis, mention they can open a ticket with !ticket if they need help.
-      Keep it under 200 characters.`,
+      `Generate a friendly welcome message for a new Discord member.
+      Server: ${serverName}. Include emojis. Mention !ticket for help. Under 200 chars.`,
       `New member: ${user.username}`,
       { maxTokens: 100, temperature: 0.8 }
     );
@@ -412,15 +546,13 @@ SEVERITY GUIDE:
   
   async summarizeConversation(messages) {
     const conversation = messages.map(m => `${m.author}: ${m.content}`).join('\n');
-    
     return await this.callAI(
-      `Summarize this conversation in 2-3 sentences. Focus on the main issue and resolution status.`,
+      `Summarize this conversation in 2-3 sentences.`,
       conversation,
       { maxTokens: 150 }
     );
   }
 
-  // Stats
   getStats() {
     return {
       enabled: !!this.groqKey,
@@ -444,28 +576,20 @@ class TicketSystem {
     this.ticketChannels = new Map();
     this.ticketCounter = 1;
     
-    this.stats = {
-      created: 0,
-      closed: 0,
-      responded: 0
-    };
+    this.stats = { created: 0, closed: 0, responded: 0 };
   }
   
   async createTicket(message, reason) {
     const guild = message.guild;
     const user = message.author;
     
-    // Check for existing ticket
     for (const [id, ticket] of this.tickets) {
       if (ticket.userId === user.id && ticket.guildId === guild.id && ticket.status === 'open') {
         return { success: false, error: 'You already have an open ticket!' };
       }
     }
     
-    // AI categorization
     const aiCategorization = await this.ai.categorizeTicket(reason);
-    
-    // Create channel
     const ticketId = `TICKET-${String(this.ticketCounter++).padStart(4, '0')}`;
     
     let channel;
@@ -485,9 +609,9 @@ class TicketSystem {
       return { success: false, error: 'Failed to create ticket channel. Check bot permissions.' };
     }
     
-    // Create ticket data
     const ticket = {
       id: ticketId,
+      oderId: user.id,
       userId: user.id,
       username: user.tag,
       avatar: user.displayAvatarURL(),
@@ -504,14 +628,12 @@ class TicketSystem {
       createdAt: Date.now(),
       updatedAt: Date.now(),
       closedAt: null,
-      rating: null,
       sentiment: 'neutral'
     };
     
     this.tickets.set(ticketId, ticket);
     this.ticketChannels.set(channel.id, ticketId);
     
-    // Add initial message
     this.addMessage(ticketId, {
       author: user.tag,
       authorId: user.id,
@@ -520,7 +642,6 @@ class TicketSystem {
       timestamp: Date.now()
     });
     
-    // Send welcome embed in ticket channel
     const embed = new EmbedBuilder()
       .setColor(0x5865F2)
       .setTitle(`🎫 ${ticketId}`)
@@ -562,7 +683,6 @@ class TicketSystem {
     
     ticket.messages.push(msg);
     ticket.updatedAt = Date.now();
-    
     this.emitUpdate();
     return msg;
   }
@@ -571,11 +691,9 @@ class TicketSystem {
     const ticket = this.tickets.get(ticketId);
     if (!ticket || ticket.status !== 'open') return { success: false };
     
-    // Find channel
     const channel = this.client.channels.cache.get(ticket.channelId);
     if (!channel) return { success: false, error: 'Channel not found' };
     
-    // Send to Discord
     const embed = new EmbedBuilder()
       .setColor(0x57F287)
       .setAuthor({ name: `${staffName} (Staff)`, iconURL: this.client.user.displayAvatarURL() })
@@ -588,7 +706,6 @@ class TicketSystem {
       return { success: false, error: 'Failed to send message' };
     }
     
-    // Add to ticket history
     this.addMessage(ticketId, {
       author: staffName,
       authorId: 'dashboard',
@@ -609,7 +726,6 @@ class TicketSystem {
     ticket.claimedByName = staffName;
     ticket.updatedAt = Date.now();
     
-    // Notify in channel
     const channel = this.client.channels.cache.get(ticket.channelId);
     if (channel) {
       await channel.send({
@@ -632,22 +748,18 @@ class TicketSystem {
     ticket.closedAt = Date.now();
     ticket.closedBy = closedBy;
     
-    // AI summary
     if (ticket.messages.length > 2) {
       ticket.aiSummary = await this.ai.summarizeConversation(ticket.messages);
     }
     
-    // Delete channel after delay
     const channel = this.client.channels.cache.get(ticket.channelId);
     if (channel) {
       await channel.send({
         embeds: [new EmbedBuilder()
           .setColor(0xED4245)
           .setTitle('🔒 Ticket Closed')
-          .setDescription(`This ticket was closed by **${closedBy}**.\nChannel will be deleted in 10 seconds.`)
-          .addFields(
-            ticket.aiSummary ? { name: '📋 AI Summary', value: ticket.aiSummary } : { name: '\u200b', value: '\u200b' }
-          )
+          .setDescription(`Closed by **${closedBy}**. Channel deletes in 10s.`)
+          .addFields(ticket.aiSummary ? { name: '📋 Summary', value: ticket.aiSummary } : { name: '\u200b', value: '\u200b' })
         ]
       });
       
@@ -665,13 +777,11 @@ class TicketSystem {
   async getSuggestedResponse(ticketId) {
     const ticket = this.tickets.get(ticketId);
     if (!ticket) return null;
-    
     return await this.ai.suggestResponse(ticket.messages, ticket.category);
   }
   
   getTickets(filter = 'all') {
     const tickets = Array.from(this.tickets.values());
-    
     switch (filter) {
       case 'open': return tickets.filter(t => t.status === 'open');
       case 'closed': return tickets.filter(t => t.status === 'closed');
@@ -680,25 +790,16 @@ class TicketSystem {
     }
   }
   
-  getTicket(ticketId) {
-    return this.tickets.get(ticketId);
-  }
+  getTicket(ticketId) { return this.tickets.get(ticketId); }
   
   emitUpdate() {
     if (this.io) {
-      this.io.emit('ticketsUpdate', {
-        tickets: this.getTickets('open'),
-        stats: this.stats
-      });
+      this.io.emit('ticketsUpdate', { tickets: this.getTickets('open'), stats: this.stats });
     }
   }
   
   getStats() {
-    return {
-      ...this.stats,
-      open: this.getTickets('open').length,
-      total: this.tickets.size
-    };
+    return { ...this.stats, open: this.getTickets('open').length, total: this.tickets.size };
   }
 }
 
@@ -724,7 +825,6 @@ class NovaBot {
     this.logs = [];
     this.recentMessages = new Map();
     
-    // Settings
     this.settings = {
       enabled: true,
       useAI: true,
@@ -745,7 +845,6 @@ class NovaBot {
       ticketsEnabled: true
     };
     
-    // Stats
     this.stats = {
       messagesScanned: 0,
       messagesDeleted: 0,
@@ -789,11 +888,7 @@ class NovaBot {
       this.recentMessages.set(channelId, []);
     }
     const messages = this.recentMessages.get(channelId);
-    messages.push({
-      author: message.author,
-      content: message.content,
-      timestamp: Date.now()
-    });
+    messages.push({ author: message.author, content: message.content, timestamp: Date.now() });
     if (messages.length > 20) messages.shift();
     return messages;
   }
@@ -810,7 +905,6 @@ class NovaBot {
       this.emitStats();
     });
 
-    // Welcome Messages
     this.client.on(Events.GuildMemberAdd, async (member) => {
       if (!this.settings.welcomeMessages) return;
       
@@ -833,14 +927,10 @@ class NovaBot {
           .setThumbnail(member.user.displayAvatarURL())
           .setTimestamp();
         
-        try {
-          await welcomeChannel.send({ embeds: [embed] });
-          this.log(`Welcomed ${member.user.tag}`, 'join');
-        } catch {}
+        try { await welcomeChannel.send({ embeds: [embed] }); this.log(`Welcomed ${member.user.tag}`, 'join'); } catch {}
       }
     });
 
-    // Button Interactions
     this.client.on(Events.InteractionCreate, async (interaction) => {
       if (!interaction.isButton()) return;
       
@@ -855,21 +945,15 @@ class NovaBot {
       }
     });
 
-    // Message Handler
     this.client.on(Events.MessageCreate, async (message) => {
       if (message.author.bot || !message.guild) return;
       
       const content = message.content || '';
       const lower = content.toLowerCase();
       
-      // Track messages for context
       const recentMsgs = this.trackRecentMessages(message);
       
-      // ─────────────────────────────────────────────────────────────────
       // TICKET SYSTEM
-      // ─────────────────────────────────────────────────────────────────
-      
-      // Check if message is in a ticket channel
       const ticketId = this.tickets.ticketChannels.get(message.channel.id);
       if (ticketId) {
         const ticket = this.tickets.getTicket(ticketId);
@@ -881,34 +965,24 @@ class NovaBot {
             isStaff: message.member?.permissions.has(PermissionFlagsBits.ManageMessages) || false
           });
           
-          // AI sentiment check
           if (ticket.messages.length % 5 === 0 && this.ai.groqKey) {
             const sentiment = await this.ai.analyzeTicketSentiment(ticket.messages);
             ticket.sentiment = sentiment.sentiment;
             if (sentiment.needs_escalation) {
-              this.log(`⚠️ Ticket ${ticketId} may need escalation: ${sentiment.summary}`, 'warning');
+              this.log(`⚠️ Ticket ${ticketId} may need escalation`, 'warning');
             }
           }
         }
         return;
       }
       
-      // Create ticket command
+      // COMMANDS
       if (lower.startsWith('!ticket')) {
-        if (!this.settings.ticketsEnabled) {
-          return message.reply('❌ Ticket system is disabled.');
-        }
-        
+        if (!this.settings.ticketsEnabled) return message.reply('❌ Tickets disabled.');
         const reason = content.slice(7).trim() || 'No reason provided';
         const result = await this.tickets.createTicket(message, reason);
-        
         if (result.success) {
-          await message.reply({
-            embeds: [new EmbedBuilder()
-              .setColor(0x57F287)
-              .setDescription(`✅ Ticket created! Check ${result.channel}`)
-            ]
-          });
+          await message.reply({ embeds: [new EmbedBuilder().setColor(0x57F287).setDescription(`✅ Ticket created! Check ${result.channel}`)] });
           this.log(`🎫 Ticket created by ${message.author.tag}: ${result.ticket.id}`, 'success');
         } else {
           await message.reply(`❌ ${result.error}`);
@@ -916,20 +990,14 @@ class NovaBot {
         return;
       }
       
-      // ─────────────────────────────────────────────────────────────────
-      // COMMANDS
-      // ─────────────────────────────────────────────────────────────────
-      
       if (lower === '!help') {
         const embed = new EmbedBuilder()
           .setColor(0x5865F2)
           .setTitle('🤖 Nova Ultra Bot')
-          .setDescription('AI-powered moderation & support')
           .addFields(
             { name: '🎫 !ticket [reason]', value: 'Create a support ticket' },
             { name: '📊 !stats', value: 'View moderation stats' },
-            { name: '⚙️ !modlog #channel', value: 'Set mod log channel (Admin)' },
-            { name: '🧠 !analyze [text]', value: 'AI analyzes text for toxicity' }
+            { name: '🧠 !analyze [text]', value: 'AI analyzes text' }
           );
         return message.reply({ embeds: [embed] });
       }
@@ -943,17 +1011,14 @@ class NovaBot {
             { name: '🗑️ Deleted', value: `${this.stats.messagesDeleted}`, inline: true },
             { name: '⚠️ Warnings', value: `${this.stats.warningsGiven}`, inline: true },
             { name: '🧠 AI Actions', value: `${this.stats.aiDetections}`, inline: true },
-            { name: '🎫 Tickets Open', value: `${this.tickets.getStats().open}`, inline: true },
-            { name: '🎫 Tickets Total', value: `${this.tickets.getStats().total}`, inline: true }
+            { name: '🎫 Tickets', value: `${this.tickets.getStats().open}`, inline: true }
           );
         return message.reply({ embeds: [embed] });
       }
       
-      // AI analyze command
-      if (lower.startsWith('!analyze ') && this.ai.groqKey) {
+      if (lower.startsWith('!analyze ')) {
         const text = content.slice(9);
         const result = await this.ai.analyzeMessage({ ...message, content: text }, []);
-        
         const embed = new EmbedBuilder()
           .setColor(result.severity >= 7 ? 0xED4245 : result.severity >= 4 ? 0xFEE75C : 0x57F287)
           .setTitle('🧠 AI Analysis')
@@ -961,17 +1026,14 @@ class NovaBot {
             { name: 'Category', value: result.category || 'safe', inline: true },
             { name: 'Severity', value: `${result.severity || 0}/10`, inline: true },
             { name: 'Action', value: result.action || 'allow', inline: true },
-            { name: 'Reason', value: result.reason || 'No issues detected' },
-            { name: 'Intent', value: result.intent || 'unknown', inline: true },
-            { name: 'Sentiment', value: result.sentiment || 'neutral', inline: true }
+            { name: 'Reason', value: result.reason || 'No issues' }
           );
-        
         return message.reply({ embeds: [embed] });
       }
       
-      // ─────────────────────────────────────────────────────────────────
-      // MODERATION
-      // ─────────────────────────────────────────────────────────────────
+      // ═══════════════════════════════════════════════════════════════════
+      // MODERATION - This is where the magic happens!
+      // ═══════════════════════════════════════════════════════════════════
       
       if (!this.settings.enabled) return;
       if (message.member?.permissions.has(PermissionFlagsBits.Administrator)) return;
@@ -982,6 +1044,7 @@ class NovaBot {
         const analysis = await this.ai.analyzeMessage(message, recentMsgs);
         
         if (analysis.shouldAct) {
+          console.log(`[ACTION] Taking action: ${analysis.action} for ${message.author.tag}`);
           await this.takeAction(message, analysis);
         }
         
@@ -998,31 +1061,23 @@ class NovaBot {
     const profile = analysis.userProfile || this.ai.getProfile(userId);
     
     // Update stats
-    if (analysis.source === 'ai') this.stats.aiDetections++;
+    if (analysis.source === 'ai' || analysis.source === 'ai_override') this.stats.aiDetections++;
     if (analysis.category === 'spam') this.stats.spamBlocked++;
     if (['profanity', 'slur', 'toxicity'].includes(analysis.category)) this.stats.badWordsBlocked++;
+    if (analysis.category === 'invite') this.stats.invitesBlocked++;
     
     // Delete message
     const shouldDelete = this.settings.deleteMessages && 
       ['delete', 'timeout', 'kick', 'ban'].includes(analysis.action);
     
     if (shouldDelete && message.deletable) {
-      try {
-        await message.delete();
-        this.stats.messagesDeleted++;
-      } catch {}
+      try { await message.delete(); this.stats.messagesDeleted++; } catch {}
     }
     
-    // Add warning to profile
+    // Add warning
     if (['warn', 'delete'].includes(analysis.action)) {
-      profile.warnings.push({
-        reason: analysis.reason,
-        severity: analysis.severity,
-        timestamp: Date.now()
-      });
+      profile.warnings.push({ reason: analysis.reason, severity: analysis.severity, timestamp: Date.now() });
       this.stats.warningsGiven++;
-      
-      // Update trust score
       this.ai.updateTrust(userId, -5, analysis.reason);
     }
     
@@ -1039,8 +1094,8 @@ class NovaBot {
           { name: 'Warnings', value: `${profile.warnings.length}/${this.settings.maxWarnings}`, inline: true }
         );
       
-      if (analysis.recommendation_for_user) {
-        dmEmbed.addFields({ name: '💡 Tip', value: analysis.recommendation_for_user });
+      if (analysis.detectedWords?.length) {
+        dmEmbed.addFields({ name: 'Detected', value: analysis.detectedWords.join(', ') });
       }
       
       await message.author.send({ embeds: [dmEmbed] });
@@ -1052,20 +1107,12 @@ class NovaBot {
     
     if (shouldTimeout && member?.moderatable) {
       const duration = this.settings.muteDuration * 60 * 1000 * Math.min(3, Math.ceil(profile.warnings.length / 3));
-      try {
-        await member.timeout(duration, analysis.reason);
-        this.stats.mutesDone++;
-        this.log(`🔇 Muted ${message.author.tag} for ${duration / 60000}m`, 'moderation');
-      } catch {}
+      try { await member.timeout(duration, analysis.reason); this.stats.mutesDone++; this.log(`🔇 Muted ${message.author.tag} for ${duration / 60000}m`, 'moderation'); } catch {}
     }
     
     // Ban
     if (analysis.action === 'ban' && member?.bannable) {
-      try {
-        await member.ban({ reason: analysis.reason });
-        this.stats.banned++;
-        this.log(`🔨 Banned ${message.author.tag}`, 'moderation');
-      } catch {}
+      try { await member.ban({ reason: analysis.reason }); this.stats.banned++; this.log(`🔨 Banned ${message.author.tag}`, 'moderation'); } catch {}
     }
     
     // Channel notice
@@ -1075,7 +1122,7 @@ class NovaBot {
           .setColor(analysis.severity >= 7 ? 0xED4245 : 0xFEE75C)
           .setAuthor({ name: 'Nova Guardian', iconURL: this.client.user.displayAvatarURL() })
           .setDescription(`${message.author} - ${analysis.reason}`)
-          .setFooter({ text: `${analysis.source === 'ai' ? '🧠 AI' : '⚡'} | Severity: ${analysis.severity}/10` })
+          .setFooter({ text: `${analysis.source === 'ai' ? '🧠 AI' : '⚡ Pattern'} | Severity: ${analysis.severity}/10` })
         ]
       });
       setTimeout(() => notice.delete().catch(() => {}), 8000);
@@ -1084,9 +1131,7 @@ class NovaBot {
     this.log(`🛡️ ${message.author.tag} → ${analysis.action.toUpperCase()} | ${analysis.reason}`, 'moderation');
   }
   
-  async start(token) {
-    await this.client.login(token);
-  }
+  async start(token) { await this.client.login(token); }
   
   getStats() {
     return {
@@ -1115,7 +1160,6 @@ app.use(express.static('public'));
 
 app.get('/', (req, res) => res.sendFile(__dirname + '/index.html'));
 
-// API Routes
 app.get('/api/stats', (req, res) => res.json(bot.getStats()));
 app.get('/api/settings', (req, res) => res.json(bot.settings));
 app.post('/api/settings', (req, res) => {
@@ -1125,63 +1169,40 @@ app.post('/api/settings', (req, res) => {
 });
 app.get('/api/logs', (req, res) => res.json(bot.logs));
 
-// Ticket API
 app.get('/api/tickets', (req, res) => res.json(bot.tickets.getTickets(req.query.filter)));
 app.get('/api/tickets/:id', (req, res) => {
   const ticket = bot.tickets.getTicket(req.params.id);
   if (ticket) res.json(ticket);
-  else res.status(404).json({ error: 'Ticket not found' });
+  else res.status(404).json({ error: 'Not found' });
 });
 app.post('/api/tickets/:id/message', async (req, res) => {
-  const { content, staffName } = req.body;
-  const result = await bot.tickets.sendMessageFromDashboard(req.params.id, content, staffName || 'Staff');
+  const result = await bot.tickets.sendMessageFromDashboard(req.params.id, req.body.content, req.body.staffName || 'Staff');
   res.json(result);
 });
 app.post('/api/tickets/:id/close', async (req, res) => {
-  const result = await bot.tickets.closeTicket(req.params.id, req.body.closedBy || 'Dashboard');
-  res.json(result);
+  res.json(await bot.tickets.closeTicket(req.params.id, req.body.closedBy || 'Dashboard'));
 });
 app.post('/api/tickets/:id/claim', async (req, res) => {
-  const result = await bot.tickets.claimTicket(req.params.id, 'dashboard', req.body.staffName || 'Staff');
-  res.json(result);
+  res.json(await bot.tickets.claimTicket(req.params.id, 'dashboard', req.body.staffName || 'Staff'));
 });
 app.get('/api/tickets/:id/suggest', async (req, res) => {
-  const suggestion = await bot.tickets.getSuggestedResponse(req.params.id);
-  res.json({ suggestion });
+  res.json({ suggestion: await bot.tickets.getSuggestedResponse(req.params.id) });
 });
 
-// Socket.IO
 io.on('connection', (socket) => {
   console.log('📊 Dashboard connected');
-  
   socket.emit('stats', bot.getStats());
   socket.emit('settings', bot.settings);
   socket.emit('logs', bot.logs);
   socket.emit('ticketsUpdate', { tickets: bot.tickets.getTickets('open'), stats: bot.tickets.getStats() });
   
-  socket.on('updateSettings', (patch) => {
-    bot.settings = { ...bot.settings, ...patch };
-    io.emit('settings', bot.settings);
-  });
-  
-  socket.on('getTickets', (filter) => {
-    socket.emit('ticketsUpdate', { tickets: bot.tickets.getTickets(filter), stats: bot.tickets.getStats() });
-  });
-  
-  socket.on('sendTicketMessage', async ({ ticketId, content, staffName }) => {
-    await bot.tickets.sendMessageFromDashboard(ticketId, content, staffName);
-  });
-  
-  socket.on('closeTicket', async ({ ticketId, closedBy }) => {
-    await bot.tickets.closeTicket(ticketId, closedBy);
-  });
-  
-  socket.on('claimTicket', async ({ ticketId, staffId, staffName }) => {
-    await bot.tickets.claimTicket(ticketId, staffId, staffName);
-  });
+  socket.on('updateSettings', (patch) => { bot.settings = { ...bot.settings, ...patch }; io.emit('settings', bot.settings); });
+  socket.on('getTickets', (filter) => { socket.emit('ticketsUpdate', { tickets: bot.tickets.getTickets(filter), stats: bot.tickets.getStats() }); });
+  socket.on('sendTicketMessage', async ({ ticketId, content, staffName }) => { await bot.tickets.sendMessageFromDashboard(ticketId, content, staffName); });
+  socket.on('closeTicket', async ({ ticketId, closedBy }) => { await bot.tickets.closeTicket(ticketId, closedBy); });
+  socket.on('claimTicket', async ({ ticketId, staffId, staffName }) => { await bot.tickets.claimTicket(ticketId, staffId, staffName); });
 });
 
-// Start
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, async () => {
   console.log(`\n🌐 Dashboard: http://localhost:${PORT}`);
@@ -1189,9 +1210,6 @@ server.listen(PORT, async () => {
   console.log(`📋 GROQ_API_KEY: ${process.env.GROQ_API_KEY ? '✅ Set' : '❌ Missing'}`);
   console.log(`📋 Node Version: ${process.version}\n`);
   
-  if (process.env.DISCORD_TOKEN) {
-    await bot.start(process.env.DISCORD_TOKEN);
-  } else {
-    console.log('⚠️ No DISCORD_TOKEN - Bot will not start');
-  }
+  if (process.env.DISCORD_TOKEN) await bot.start(process.env.DISCORD_TOKEN);
+  else console.log('⚠️ No DISCORD_TOKEN');
 });
