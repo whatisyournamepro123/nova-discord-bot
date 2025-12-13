@@ -17,7 +17,7 @@ class DiscordBot {
         
         this.ai = new AdvancedAI();
         this.verification = new UltraVerification(this.client, io);
-        this.moderation = new UltraModeration(this.client, this.ai); // 👈 INITIALIZE THIS
+        this.moderation = new UltraModeration(this.client, this.ai, this.io);// 👈 INITIALIZE THIS
         
         this.logs = [];
         this.tickets = new Map();

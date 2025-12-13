@@ -246,8 +246,74 @@ class NovaBot {
       intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent, GatewayIntentBits.GuildMembers]
     });
     this.ai = new NovaThinkingEngine();
-    this.tickets = new Map();
+    this.settings = new Map();
+    this.userWarnings = new Map();
+    this.stats = { messagesScanned: 0, messagesDeleted: 0, warningsGiven: 0, mutesDone: 0, banned: 0, aiDetections: 0 };
     this.setupEvents();
+  }
+
+  getSettings(guildId) {
+    if (!this.settings.has(guildId)) {
+      this.settings.set(guildId, {
+        modEnabled: true,
+        autoDelete: true,
+        autoWarn: true,
+        autoMute: true,
+        maxWarnings: 3,
+        muteDuration: 10,
+        modLogChannel: null
+      });
+    }
+    return this.settings.get(guildId);
+  }
+
+  async handleViolation(msg, decision, settings) {
+    const id = msg.author.id;
+    const current = this.userWarnings.get(id) || 0;
+    let next = current;
+
+    if (decision.action === 'warn' || decision.action === 'delete_warn') {
+      next = current + 1;
+      this.userWarnings.set(id, next);
+      this.stats.warningsGiven++;
+      const dm = new EmbedBuilder()
+        .setColor(decision.severity === 'critical' ? 0xFF0000 : decision.severity === 'high' ? 0xFF4500 : 0xFFD700)
+        .setAuthor({ name: 'Nova AI Moderation' })
+        .setDescription(`Your message in ${msg.guild.name} violated server rules.\nReason: ${decision.reason}\nWarnings: ${next}/${settings.maxWarnings}`)
+        .addFields({ name: 'Message', value: msg.content.substring(0, 200) || 'Attachment/Embed' })
+        .setTimestamp();
+      try { await msg.author.send({ embeds: [dm] }); } catch {}
+    }
+
+    if (next >= settings.maxWarnings && settings.autoMute && msg.member.moderatable) {
+      const ms = settings.muteDuration * 60 * 1000;
+      try { await msg.member.timeout(ms, 'Exceeded warnings'); this.stats.mutesDone++; } catch {}
+      this.userWarnings.set(id, 0);
+    }
+
+    if (decision.action === 'ban' && msg.member.bannable) {
+      try { await msg.member.ban({ reason: decision.reason || 'Critical violation' }); this.stats.banned++; } catch {}
+    }
+  }
+
+  async logModeration(msg, decision, warnings, settings) {
+    const color = decision.severity === 'critical' ? 0xFF0000 : decision.severity === 'high' ? 0xFF4500 : 0xFFD700;
+    const embed = new EmbedBuilder()
+      .setColor(color)
+      .setAuthor({ name: 'Nova Guardian System', iconURL: this.client.user.displayAvatarURL() })
+      .setDescription(decision.reason || 'Violation detected')
+      .addFields(
+        { name: 'User', value: `${msg.author} (\`${msg.author.id}\`)`, inline: true },
+        { name: 'Action', value: decision.action, inline: true },
+        { name: 'Severity', value: decision.severity || 'none', inline: true },
+        { name: 'Warnings', value: `${warnings}/${settings.maxWarnings}`, inline: true }
+      )
+      .setThumbnail(msg.author.displayAvatarURL())
+      .setTimestamp();
+    if (settings.modLogChannel) {
+      const ch = msg.guild.channels.cache.get(settings.modLogChannel);
+      if (ch) { try { await ch.send({ embeds: [embed] }); } catch {} }
+    }
   }
 
   setupEvents() {
@@ -257,36 +323,48 @@ class NovaBot {
 
     this.client.on(Events.MessageCreate, async (msg) => {
       if (msg.author.bot || !msg.guild) return;
+      const settings = this.getSettings(msg.guild.id);
+      const isAdmin = msg.member?.permissions.has(PermissionFlagsBits.Administrator);
+      this.stats.messagesScanned++;
 
-      // 🚨 ADMIN BYPASS CHECK 🚨
-      // If you are testing, COMMENT OUT the next line to let the bot ban you.
-      // if (msg.member.permissions.has(PermissionFlagsBits.Administrator)) return; 
+      const content = msg.content || '';
+      if (content.startsWith('!setmodlog') && isAdmin) {
+        const ch = msg.mentions.channels.first();
+        if (ch) {
+          settings.modLogChannel = ch.id;
+          return msg.reply({ embeds: [new EmbedBuilder().setColor(0x57F287).setDescription(`Moderation logs will be sent to: ${ch}`)] });
+        }
+        return msg.reply({ content: 'Mention a channel. Usage: !setmodlog #channel' });
+      }
 
-      // RUN MODERATION
-      const result = await this.ai.moderateMessage(msg, msg.member, {});
+      if (!settings.modEnabled || isAdmin) return;
+
+      const result = await this.ai.moderateMessage(msg, msg.member, settings);
 
       if (result.shouldAct) {
         try {
-          // 1. DELETE
-          if (msg.deletable) await msg.delete();
+          if ((result.action === 'delete' || result.action === 'delete_warn') && settings.autoDelete && msg.deletable) {
+            await msg.delete();
+            this.stats.messagesDeleted++;
+          }
 
-          // 2. EMBED WARNING
           const embed = new EmbedBuilder()
-            .setColor(result.severity === 'critical' ? '#FF0000' : '#FFA500')
-            .setTitle(`🛡️ Nova Auto-Mod: ${result.action.toUpperCase()}`)
-            .setDescription(`**User:** ${msg.author}\n**Reason:** ${result.reason}`)
-            .setFooter({ text: 'Nova Ultra AI' })
+            .setColor(result.severity === 'critical' ? 0xFF0000 : result.severity === 'high' ? 0xFF4500 : 0xFFD700)
+            .setAuthor({ name: 'Nova Guardian System', iconURL: this.client.user.displayAvatarURL() })
+            .setDescription(`${result.action === 'delete_warn' ? 'Message removed' : 'Warning issued'}\nReason: ${result.reason}`)
+            .addFields(
+              { name: 'User', value: `${msg.author}`, inline: true },
+              { name: 'Action', value: result.action, inline: true },
+              { name: 'Severity', value: result.severity || 'none', inline: true },
+            )
             .setTimestamp();
 
-          const warnMsg = await msg.channel.send({ embeds: [embed] });
-          setTimeout(() => warnMsg.delete().catch(()=>{}), 10000); // Auto clean up warning
+          const notice = await msg.channel.send({ embeds: [embed] });
+          setTimeout(() => notice.delete().catch(()=>{}), 10000);
 
-          // 3. ACTIONS
-          if (result.action === 'ban' && msg.member.bannable) {
-            await msg.member.ban({ reason: result.reason });
-          } else if (result.action === 'mute' && msg.member.moderatable) {
-            await msg.member.timeout(10 * 60 * 1000, result.reason); // 10 min mute
-          }
+          await this.handleViolation(msg, result, settings);
+          const warnings = this.userWarnings.get(msg.author.id) || 0;
+          await this.logModeration(msg, result, warnings, settings);
 
         } catch (e) {
           console.error("Mod Action Failed:", e);
@@ -296,10 +374,11 @@ class NovaBot {
   }
 
   async start(token) { await this.client.login(token); }
-  // ... (Keep other bot methods like getStats, etc for dashboard to work) ...
-  getStats() { return { guilds: 1, users: 1 }; }
-  getAllTickets() { return []; }
-  getPendingSessions() { return []; }
+  getStats() {
+    const guilds = this.client.guilds?.cache.size || 0;
+    const users = this.client.guilds?.cache.reduce((a, g) => a + g.memberCount, 0) || 0;
+    return { guilds, users, ...this.stats };
+  }
 }
 
 // ╔═══════════════════════════════════════════════════════════════════════════════════════╗
